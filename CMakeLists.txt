@@ -793,7 +793,8 @@ if(BUILD_TESTING)
   add_executable(expert_cache_segmented_test tests/core/expert_cache_segmented_test.cpp)
   target_link_libraries(expert_cache_segmented_test PRIVATE model_qwen4exp_engine)
   basalt_gpu_test(NAME expert_cache_segmented_test COMMAND expert_cache_segmented_test)
-  set_tests_properties(expert_cache_segmented_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60)
+  # the VRAM readings are device totals: a GPU test running beside these on the same card moves them mid-check
+  set_tests_properties(expert_cache_segmented_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 RUN_SERIAL TRUE)
   add_executable(file_expert_homes_test tests/core/file_expert_homes_test.cpp)
   target_link_libraries(file_expert_homes_test PRIVATE model_qwen4exp_engine)
   basalt_embed_manifest(file_expert_homes_test)
@@ -807,7 +808,7 @@ if(BUILD_TESTING)
   add_executable(kv_arena_test tests/core/kv_arena_test.cpp)
   target_link_libraries(kv_arena_test PRIVATE model_qwen4exp_engine)
   basalt_gpu_test(NAME kv_arena_test COMMAND kv_arena_test)
-  set_tests_properties(kv_arena_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60)
+  set_tests_properties(kv_arena_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 RUN_SERIAL TRUE)
   endif()
 endif()
 
@@ -1267,6 +1268,7 @@ add_executable(hc_fused_parity tests/models/qwen4exp/kernels/hc_fused_parity.cpp
 target_include_directories(hc_fused_parity PRIVATE ${_gpu_include_directories})
 target_link_libraries(hc_fused_parity PRIVATE model_qwen4exp_kernels ${_gpu_runtime_target})
 basalt_gpu_test(NAME hc_fused_parity COMMAND hc_fused_parity 20 1 8 --check-only --stress 200)
+set_tests_properties(hc_fused_parity PROPERTIES SKIP_RETURN_CODE 77)
 add_executable(mid_chain_parity tests/models/qwen4exp/kernels/mid_chain_parity.cpp)
 target_include_directories(mid_chain_parity PRIVATE ${_gpu_include_directories})
 target_link_libraries(mid_chain_parity PRIVATE model_qwen4exp_kernels ${_gpu_runtime_target})
@@ -2097,6 +2099,7 @@ if(BUILD_TESTING)
   target_link_libraries(dec_moe_parity PRIVATE model_qwen4exp_kernels artifact ggml_quants ${_gpu_runtime_target})
   basalt_gpu_test(NAME dec_moe_parity_nvfp4 COMMAND dec_moe_parity --nvfp4)   # synthetic experts: no GGUF needed
   basalt_gpu_test(NAME dec_moe_parity_kq COMMAND dec_moe_parity --kq)   # synthetic K-quant and i-quant experts at the real geometry
+  set_tests_properties(dec_moe_parity_nvfp4 dec_moe_parity_kq PROPERTIES SKIP_RETURN_CODE 77)
   endif()
   # native expert pairs on synthetic ggml-quantized weights at 2560/640: GPU and CPU experts against the float
   # reference, GPU dequantizers against to_float.

@@ -92,6 +92,20 @@ is reworked, not shipped.
       above), and a native pack with NVFP4 experts is refused at the start of an older target's build, in the
       format check `qfn_run.cpp` already runs before any allocation ("its NVFP4 kernels are not built") -
       its kernels stay unbuilt there.
+- [x] The suite runs clean on an 89 build on the 4080 SUPER, the machine's own CPU-topology test excepted
+      (a pre-existing `platform_cpu_test` anomaly on this kernel): the older target's recorded test answers
+      skip (26f8109a), `hc_fused_parity` and `dec_moe_parity_*` register the 77 their gates already returned,
+      and the tag protocol's host producers are clean. A GeForce RTX 4080 SUPER evicts a dirty CPU cache line
+      when it pleases and its late write-back overwrote what a combine had re-armed into a peer's row (the tag
+      word lost in most late-landing rows; no store qualifier, fence or verify-and-retry changed it - the
+      line simply survived with no pressure, and NT stores leave no line to evict): `fill_u32_nt`/`copy_f32_nt`
+      (`compiler.hpp`) write every host word of the tag rows and the window's word block, and
+      `dec_moe_parity --kq` passes ten runs in a row.
+- [x] Two suite flakes under `-j`: `dec_gdn_parity`'s `state_out` poison ran on the legacy stream its
+      non-blocking test stream does not wait for, so the poison could land after the kernel that had committed
+      its state (a bitwise DIFF only under load); it waits now. `expert_cache_segmented_test` and
+      `kv_arena_test` measure the device's free VRAM, a total a GPU test running beside them moves mid-check:
+      they run serially now, and their readings retry inside a short grace as signed deltas.
 - [ ] Re-measure the card's gates for Ada's SM count: the QSA paths ship gated at `sms >= 128`
       (a 4090), and a 4080-class card has 80 SMs; re-tune or re-gate from measurements, not by
       lowering the number.

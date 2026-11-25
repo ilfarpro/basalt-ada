@@ -476,6 +476,7 @@ bool parity_seg(cudaStream_t s) {
                 const size_t r0 = row0[k];
                 float* st_init = upload(st0[k]);
                 float* sout = fbuf(NL * SF);
+                CK(cudaDeviceSynchronize());   // as above: the poison of state_out lands before the stream's kernels write it
                 DecRecArgs a;
                 a.state = st_init + layer * SF; a.qkv = d_qkv + r0 * C; a.conv_w = L.conv_w; a.x = d_x + r0 * N;
                 a.w_alpha = L.wa; a.w_beta = L.wb; a.dt = L.dt; a.ssm_a = L.ssm_a; a.z = d_z + r0 * ZV; a.gamma = L.gamma;
