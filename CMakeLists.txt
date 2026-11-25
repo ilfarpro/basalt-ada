@@ -46,7 +46,7 @@ find_package(CUDAToolkit REQUIRED)
 # Main kernels (NVFP4 tensor cores, TMA, Blackwell instructions) compile for sm_120 only.
 # When PEER_ADA is enabled, peer kernels (Q8_1/Q2_0 expert rows, standard CUDA) additionally compile
 # for sm_89 (Ada) so a non-Blackwell card can serve as the expert tier.
-# cmake/target_arch.cmake has checked CMAKE_CUDA_ARCHITECTURES: one capability, 12.0 or 12.1 (BASALT_CUDA_CC).
+# cmake/target_arch.cmake has checked CMAKE_CUDA_ARCHITECTURES: one capability, 8.9, 12.0 or 12.1 (BASALT_CUDA_CC).
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
   message(FATAL_ERROR "CUDA ${CMAKE_CUDA_COMPILER_VERSION}: basalt needs CUDA 13.0 or newer")
 endif()
@@ -659,6 +659,14 @@ if(PEER_ADA)
     PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
   set_source_files_properties(src/models/hy4flash/kernels/ops.cu
     PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
+endif()
+
+# hc_fused.cu on an sm_89 main-card build: the Blackwell TMA helpers are dead code there by design (the kernel body
+# is sm_90 and up; the host runs the unfused hc8 path), and --Werror all-warnings would turn that dead code into an
+# error.  The suppression is the file's and an 89 build's, not the Blackwell build's.
+if(BASALT_CUDA_CC STREQUAL "89")
+  set_source_files_properties(src/models/qwen4exp/kernels/hc_fused.cu
+    PROPERTIES COMPILE_OPTIONS "--diag-suppress=177")
 endif()
 
 # ---- engine -----------------------------------------------------

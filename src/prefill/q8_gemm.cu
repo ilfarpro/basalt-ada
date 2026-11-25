@@ -15,6 +15,11 @@
 
 #include "basalt/log.hpp"
 
+#if BASALT_CUDA_CC >= 120
+// sm_90 and up throughout: the TMA / mbarrier pipeline beside the int8 MMA.  an sm_89 build compiles the portable
+// section at the end of the file instead; see PLAN.md (this path belongs to another model's prompt path, out of the
+// Ada scope).
+
 namespace basalt::prefill::q8 {
 namespace {
 
@@ -604,3 +609,35 @@ void gemm(const int8_t* w, const uint16_t* w_scales_t, int64_t w_rows, int64_t w
 }
 
 }  // namespace basalt::prefill::q8
+
+#else  // BASALT_CUDA_CC < 120
+
+// Ada's build: the byte counts and the scale-plane locator are live (pure arithmetic), the launches refuse (fp8_gemm.cu's note).
+namespace basalt::prefill::q8 {
+namespace {
+[[noreturn]] void not_built() {
+    basalt::log::error("basalt", "q8 prefill: the TMA pipeline is not built for sm_%d; this path needs the Blackwell card", BASALT_CUDA_CC);
+    std::exit(1);
+}
+}  // namespace
+
+size_t act_bytes(int64_t rows, int64_t cols) {   // the form above, scale_off written out
+    return (((size_t) rows * (size_t) cols + 15) & ~size_t(15)) + (size_t) (cols >> 5) * (size_t) act_scale_ld(rows) * sizeof(float);
+}
+
+float* act_scales(void* act, int64_t rows, int64_t cols) {
+    return reinterpret_cast<float*>(static_cast<uint8_t*>(act) + (((size_t) rows * (size_t) cols + 15) & ~size_t(15)));
+}
+
+size_t scale_plane_bytes(int64_t rows, int64_t cols) {
+    return (size_t) (cols >> 5) * (size_t) scale_plane_ld(rows) * sizeof(uint16_t);
+}
+
+void transpose_scales(const uint16_t*, int64_t, int64_t, uint16_t*, void*) { not_built(); }
+void quantize(const float*, int64_t, int64_t, int64_t, void*, void*) { not_built(); }
+void gemm_segmented(const Segment*, int, int64_t, const void*, int64_t, Epilogue, void*) { not_built(); }
+void gemm(const int8_t*, const uint16_t*, int64_t, int64_t, const void*, int64_t, float*, int64_t, Epilogue, void*) { not_built(); }
+}  // namespace basalt::prefill::q8
+
+#endif  // BASALT_CUDA_CC >= 120
+

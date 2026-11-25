@@ -10,6 +10,10 @@
 
 #include "basalt/log.hpp"
 
+#if BASALT_CUDA_CC >= 120
+// the sm_120a form throughout: the block-scaled `mma.sync.aligned.kind::mxf8f6f4` with UE8M0 scales.  an sm_89 build
+// compiles the portable section at the end of the file instead; see PLAN.md.
+
 namespace basalt::prefill::mxfp8 {
 namespace {
 
@@ -460,3 +464,27 @@ void run(const Product& p, void* stream) {
 }
 
 }  // namespace basalt::prefill::mxfp8
+
+#else  // BASALT_CUDA_CC < 120
+
+// Ada's build: the byte count is live (fp8_gemm.cu's note), the entries refuse.
+namespace basalt::prefill::mxfp8 {
+namespace {
+[[noreturn]] void not_built() {
+    basalt::log::error("basalt", "mxfp8 experts prefill: the block-scaled MMA path is not built for sm_%d; MXFP8 expert prefill needs the Blackwell card", BASALT_CUDA_CC);
+    std::exit(1);
+}
+}  // namespace
+
+size_t act_bytes(int64_t rows, int64_t cols) {   // the form above, scale_off written out
+    return (((size_t) rows * (size_t) cols + 15) & ~(size_t) 15) + (size_t) rows * (size_t) (cols >> 5);
+}
+
+void plan_blocks(const int32_t*, int, int32_t*, void*) { not_built(); }
+void quantize_tokens(const float*, int64_t, int64_t, int64_t, void*, void*) { not_built(); }
+void quantize_f16(const uint16_t*, int64_t, int64_t, int64_t, void*, void*) { not_built(); }
+void run(const Product&, void*) { not_built(); }
+}  // namespace basalt::prefill::mxfp8
+
+#endif  // BASALT_CUDA_CC >= 120
+

@@ -30,6 +30,10 @@
 
 #include "basalt/log.hpp"
 
+#if BASALT_CUDA_CC >= 120
+// the whole file is the sm_120a form: the block-scaled `mma.sync.aligned.kind::mxf8f6f4` and the TMA / mbarrier
+// pipeline.  an sm_89 build compiles the portable section at the end of the file instead; see PLAN.md.
+
 namespace basalt::prefill::fp8 {
 namespace {
 
@@ -560,3 +564,35 @@ void gemm(const uint8_t* w, int64_t w_rows, int64_t w_cols, const float* w_scale
 }
 
 }  // namespace basalt::prefill::fp8
+
+#else  // BASALT_CUDA_CC < 120
+
+// Ada's build: the byte counts are live (a scratch sizing does not need the card's instructions), every other entry
+// refuses.  The FP8 prefill path needs the block-scaled `mma.sync.kind::mxf8f6f4` of the sm_120a ISA, and this build
+// does not carry it; the runtime does not put an FP8 pack on an Ada card, so reaching one of these names is a bug,
+// and it says so.  The Ada prefill design is PLAN.md's later work.
+namespace basalt::prefill::fp8 {
+namespace {
+[[noreturn]] void not_built() {
+    basalt::log::error("basalt", "fp8 prefill: the block-scaled MMA path is not built for sm_%d; FP8 weights need the Blackwell card", BASALT_CUDA_CC);
+    std::exit(1);
+}
+}  // namespace
+
+size_t scale_off(int64_t rows, int64_t cols) { return ((size_t) rows * (size_t) cols + 15) & ~(size_t) 15; }
+
+size_t act_bytes(int64_t rows, int64_t cols) { return scale_off(rows, cols) + (size_t) rows * sizeof(float) + 16; }
+
+float* act_scales(void* act, int64_t rows, int64_t cols) {
+    return reinterpret_cast<float*>(static_cast<uint8_t*>(act) + scale_off(rows, cols));
+}
+
+void quantize(const float*, int64_t, int64_t, int64_t, void*, void*) { not_built(); }
+void rms_norm_quantize(const float*, const float*, float, int64_t, int64_t, void*, float*, void*) { not_built(); }
+void rms_norm_quantize(const uint16_t*, const float*, float, int64_t, int64_t, void*, uint16_t*, void*) { not_built(); }
+void gemm(const uint8_t*, int64_t, int64_t, const float*, const void*, int64_t, void*, int64_t, Epilogue, void*) { not_built(); }
+void gemm_segmented(const Segment*, int, int64_t, const void*, int64_t, Epilogue, void*) { not_built(); }
+}  // namespace basalt::prefill::fp8
+
+#endif  // BASALT_CUDA_CC >= 120
+

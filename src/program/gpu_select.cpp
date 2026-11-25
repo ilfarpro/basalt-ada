@@ -262,7 +262,7 @@ GpuChoice choose_gpus(const GpuSpec& spec, GpuMode mode, const std::string& shar
     for (size_t idx = 1; known && idx < count; ++idx) {
         const GpuCard& g = visible[(size_t) c.cards[idx]];
         const std::string who = gpu_label(visible, c.cards[idx]);
-        const bool ada = g.cc_major == 8 && g.cc_minor == 9;
+        const bool ada = g.cc_major == 8 && g.cc_minor == 9 && !core::cuda_cc_is_ours(8, 9);   // sm_89 as a foreign arch
         if (mode == GpuMode::Peer) {
             if (!gpu_peer_supported(g))
                 return refuse("gpu-mode peer: " + who + " is " + arch_name(g) +
@@ -295,7 +295,8 @@ std::string check_gpu_modes(const GpuChoice& c, const std::string& model, const 
     // an sm_89 peer (a -DPEER_ADA=ON build) runs only the peer kernels that build compiles for it
     for (size_t i = 1; c.mode == GpuMode::Peer && !m.peer_ada && i < c.cards.size(); ++i) {
         const int k = c.cards[i];
-        if (k >= 0 && (size_t) k < visible.size() && visible[(size_t) k].cc_major == 8 && visible[(size_t) k].cc_minor == 9)
+        if (k >= 0 && (size_t) k < visible.size() && visible[(size_t) k].cc_major == 8 && visible[(size_t) k].cc_minor == 9 &&
+            !core::cuda_cc_is_ours(8, 9))
             return "gpu-mode peer: " + gpu_label(visible, k) + " is " + arch_name(visible[(size_t) k]) + "; " + model + " runs peer on " + core::cuda_cc_name() + " cards";
     }
     return {};

@@ -76,15 +76,21 @@ is reworked, not shipped.
       The rest (`fused_gdn`, `gdn`, `qsa_decode_attn`, `qsa_dec_fused`, the prompt
       `gemm`/`kernels`/`moe_fused*`, `moe_mmq`, every other qwen4exp kernel file) already
       compiles clean for sm_89.
-- [ ] Build: `cmake/target_arch.cmake` takes 89 (the probe's whole-tree blockers are exactly the
-      file set of the item above plus the FP4 bodies); the `120a`-only targets split into a
-      portable and an arch-accelerated body - for this scope `prefill_fp4`/`prefill_fp8`/
-      `prefill_mxfp8` (block-scaled `mma.sync.kind::mxf4nvf4`/`mxf8f6f4` and `cvt.e2m1x2`, hard
-      ptxas rejects on 89) leave the 89 build with the packs that need them, `window_gemm` and
-      `narrow_bf16_parity` already carry 89 bodies; CI builds the sm_89 main path.
-      (`prefill/q8_gemm.cu`, TMA + `try_wait`, belongs to inkling2's prompt path: out of scope.)
-- [ ] Runtime: `gpu_main_supported` and the card gates accept sm_89, and the NVFP4 packs are
-      refused on an Ada main card with a clear message while their kernels stay unbuilt.
+- [x] Build: `cmake/target_arch.cmake` takes 89 (one compute capability per build, its own message), and an
+      89 build defaults to the one model an Ada main card serves (`cmake/models.cmake`); the
+      `120a`-only prefill bodies - `prefill_fp4`/`prefill_fp8`/`prefill_mxfp8` (`mma.sync.kind::mxf4nvf4`/
+      `mxf8f6f4`, `cvt.e2m1x2`) and `prefill_q8` (TMA + `try_wait`, another model's prompt path) - stay in
+      the 89 build as portable sections: the byte-count helpers stay live (scratch sizing needs them),
+      every launch entry refuses with a named message (the runtime refuses those packs before them, the
+      next item); the guarded regions are HEAD's text (their sm_120a SASS is byte-identical);
+      `hc_fused.cu`'s Blackwell helpers dead-code on 89 gets a file- and arch-scoped `--diag-suppress=177`
+      instead of the Werror it would hit; the whole tree builds for 89 with `WERROR=ON` and its CPU tests
+      pass; CI gains `build-ada-main` (compile + CPU tests, qwen4exp). `gpu_select.cpp`'s sm_89-as-peer
+      special cases now mean "sm_89 as a foreign arch" (they no longer fire when 89 is the build's own
+      capability) and `gpu_select_test` names the build's capability through `kCudaCCMajor/Minor`.
+- [ ] Runtime: the card gates accept sm_89 (done with the item above: `gpu_main_supported` follows
+      `cuda_cc_is_ours`), and the NVFP4 packs are refused on an Ada main card with a clear message
+      while their kernels stay unbuilt.
 - [ ] Re-measure the card's gates for Ada's SM count: the QSA paths ship gated at `sms >= 128`
       (a 4090), and a 4080-class card has 80 SMs; re-tune or re-gate from measurements, not by
       lowering the number.
