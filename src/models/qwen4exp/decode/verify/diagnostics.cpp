@@ -65,15 +65,10 @@ bool Verifier::release_gpu_waits(int timeout_ms) {
     }
     basalt::kernels::wait_abort_release();   // the bounded device waits (mid chain, commit finisher) fall through
     if (dm_ != nullptr) {   // the peer window stops at its next ring; CUDA0's waits on it pass
-        *(volatile uint32_t*) (dm_->h_w + 0) = UINT32_MAX;
-        *(volatile uint32_t*) (dm_->h_w + 16) = UINT32_MAX;
-        *(volatile uint32_t*) (dm_->h_w + 48) = UINT32_MAX;   // the mixer's doorbell and done word
-        *(volatile uint32_t*) (dm_->h_w + 52) = UINT32_MAX;
-        *(volatile uint32_t*) (dm_->h_w + 60) = UINT32_MAX;   // the release word the combine polls with further peers
-        for (DecMoe::XPeer& x : dm_->xp) {
-            *(volatile uint32_t*) (x.h_w + 0) = UINT32_MAX;
-            *(volatile uint32_t*) (x.h_w + 16) = UINT32_MAX;
-        }
+        // Non-temporal like `dm_begin`'s zeros: these lines' other words are the peer kernel's to write.
+        for (uint32_t off : {0u, 16u, 48u, 52u, 60u}) basalt::platform::fill_u32_nt(dm_->h_w + off, 1, UINT32_MAX);
+        for (DecMoe::XPeer& x : dm_->xp)
+            for (uint32_t off : {0u, 16u}) basalt::platform::fill_u32_nt(x.h_w + off, 1, UINT32_MAX);
         dm_->tag_dirty = true;
     }
     std::atomic_thread_fence(std::memory_order_seq_cst);
