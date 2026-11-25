@@ -7,6 +7,7 @@
 // sums, so a row's bits do not depend on the rows beside it. A window's convolutions read the rows before them in the
 // window and the ring for the positions before the window, and each row writes its own ring slot: a window of at most
 // kDecodeRows rows touches distinct slots (kDecodeRows + kConv - 1 <= kConvRing).
+#include "basalt/kernels/l2_pf.cuh"
 #include "basalt/kernels/pdl.hpp"
 #include "basalt/kernels/q8_1_finite.hpp"
 #include "basalt/models/inkling2/kernels.hpp"
@@ -220,8 +221,7 @@ __device__ __forceinline__ void kv_read_ahead(const MixNorm& a) {
         if (pj >= 0) {
             const int w = which == 2 ? kWidth : kKvHeads * kHeadDim;
             const float* ring = which == 0 ? a.ring_k : which == 1 ? a.ring_v : a.ring_a;
-            asm volatile("cp.async.bulk.prefetch.L2.global [%0], %1;" ::"l"(ring + (size_t) (pj % kConvRing) * w), "r"((unsigned) (w * 4))
-                         : "memory");
+            bk::pf_l2(ring + (size_t) (pj % kConvRing) * w, (uint64_t) w * 4);
         }
     }
     const int lo = a.kv_window > 0 ? max(0, p0 - a.kv_window + 1) : 0;
@@ -237,7 +237,7 @@ __device__ __forceinline__ void kv_read_ahead(const MixNorm& a) {
         const uint64_t start = i < n1 ? (uint64_t) c0 * a.kv_cell + i * kPiece : (i - n1) * kPiece;
         const uint64_t end = i < n1 ? (uint64_t) c0 * a.kv_cell + b1 : b2;
         const uint64_t take = min(kPiece, end - start);
-        asm volatile("cp.async.bulk.prefetch.L2.global [%0], %1;" ::"l"(base + start), "r"((unsigned) take) : "memory");
+        bk::pf_l2(base + start, take);
     }
 }
 
@@ -595,8 +595,7 @@ __global__ void __launch_bounds__(256) moe_finish_kernel(MoeFinish a) {
     if (threadIdx.x < kConv - 1) {   // the block's ring entries of the three positions before this row into L2
         const int pj = a.pos[r] - 1 - (int) threadIdx.x;
         if (pj >= 0)
-            asm volatile("cp.async.bulk.prefetch.L2.global [%0], %1;" ::"l"(ring + (size_t) (pj % kConvRing) * kWidth + blockIdx.y * 256),
-                         "r"(256u * 4u) : "memory");
+            bk::pf_l2(ring + (size_t) (pj % kConvRing) * kWidth + blockIdx.y * 256, 1024u);
     }
     bk::pdl_wait();
     bk::pdl_launch_dependents();

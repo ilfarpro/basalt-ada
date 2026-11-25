@@ -33,7 +33,7 @@ is reworked, not shipped.
       and the test binary exits at its last check there because its reference `rms_norm_rows`
       (`dense_ops`, not in the peer file list) has no sm_89 cubin yet - a build-gate item below.
 - [ ] TMA audit: a `cp.async` body wherever the main path uses `cp.async.bulk` (`dec_moe`,
-      `attn_chain`, `hc_fused`, the prefill GEMMs, inkling2/hy4flash ops);
+      `attn_chain`, `hc_fused`, the prefill GEMMs);
       thread-block clusters only through the SPLIT instantiation pattern, re-tuned for Ada's
       SM count.  Done: `dense_tc` and `qsa_mid` - the mbarrier phases stay, warp 0's bulk copy
       becomes 16-byte `cp.async.cg` chunks spread over the block with one
@@ -47,6 +47,17 @@ is reworked, not shipped.
       last-word read still waits for the part to land); `dec_commit_parity` is bitwise on the
       4080 SUPER incl. the lazy read-ahead, whose bench reads 47 MB at ~670 GB/s once the
       still-in-flight tail is discounted (the card's measured ceiling).
+      Done: inkling2/hy4flash's ops and glue - their five bulk prefetches become the shared
+      `basalt/kernels/l2_pf.cuh` helper (sm_90+ keeps the bulk asm verbatim, below it walks
+      128-byte `prefetch.global.L2` lines; the callers still wait through their last-word
+      reads).  On the 4080 SUPER all five run: inkling2's `attnres_mix`, `mix_norm` with the
+      read-ahead block switched on (outputs bitwise against the run without it),
+      `expert_read_ahead`, `expert_prefetch` and bitwise `moe_finish`; hy4flash's
+      `engram_apply` and `l2_read_ahead`, which still stops at its mark and reads only the
+      prefix.  The models' full parity binaries do not run on Ada yet: inkling2's `attn.cu`
+      calls `this_cluster()` (the `attn_chain` item) and hy4flash's needs `dense_ops`/`mhc`
+      cubins (the `hc_fused` item); the models' other files compile clean for sm_89 and
+      wait for those items.
 - [ ] Prefill: replace the `kind::mxf4nvf4` paths with an Ada design, not an FP4 emulation: an
       FP8 tensor-core GEMM (Ada's full-rate path; a numerics move, the quality gate decides) or
       BF16 to FP32.

@@ -649,6 +649,17 @@ if(PEER_ADA)
   set_source_files_properties(src/models/qwen4exp/kernels/native_qsa_indexer.cu
     PROPERTIES COMPILE_OPTIONS "--use_fast_math;--generate-code=arch=compute_89,code=sm_89")
 endif()
+# Ada as a main card (PLAN.md): inkling2's and hy4flash's kernels are plain CUDA apart from their L2
+# read-ahead, which walks prefetch.global.L2 line by line on Ada (basalt/kernels/l2_pf.cuh).  Per file:
+# the libraries' other files are not sm_89-clean yet, so an Ada card can run only these kernels.
+if(PEER_ADA)
+  set_source_files_properties(
+    src/models/inkling2/kernels/ops.cu
+    src/models/inkling2/kernels/glue.cu
+    PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
+  set_source_files_properties(src/models/hy4flash/kernels/ops.cu
+    PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
+endif()
 
 # ---- engine -----------------------------------------------------
 # The COMPOSED layer lives here and not in `core`, because it calls kernels and `kernels`
