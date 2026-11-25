@@ -829,6 +829,8 @@ void bench_seg(cudaStream_t s) {
         void* yq;
         CK(cudaMalloc(&h, (size_t) R * C * 4)); CK(cudaMalloc(&g, (size_t) R * HV * 4)); CK(cudaMalloc(&b, (size_t) R * HV * 4));
         CK(cudaMalloc(&y, (size_t) R * ZV * 4)); CK(cudaMalloc(&yq, (size_t) R * (ZV / 32) * 36));
+        float* gates = nullptr;   // a build without clusters runs dec_gdn_rec_seg through dec_gdn_gates (no capture allocs)
+        CK(cudaMalloc(&gates, (size_t) 2 * R * HV * 4));
         auto stages = [&](int path, int l) {
             if (path == 0) {   // per row, as the batch window ran
                 for (int k = 0; k < R; ++k) {
@@ -850,7 +852,8 @@ void bench_seg(cudaStream_t s) {
                 a.qkv = d_qkv; a.conv_w = L.conv_w; a.x = d_x; a.w_alpha = L.wa; a.w_beta = L.wb; a.dt = L.dt;
                 a.ssm_a = L.ssm_a; a.z = d_z; a.gamma = L.gamma; a.h = h; a.gate = g; a.beta = b; a.yq = yq; a.C = C;
                 a.n_embd = N; a.h_k = HK; a.h_v = HV; a.eps = EPS; a.early_trigger = false;
-                if (path == 3) { dec_gdn_rec_seg(a, d_rows, (size_t) l * SF, R, 1, R, s); return; }
+                a.o = y;   // the split family's raw output (and dec_gdn_gates's gates above): carried, not scratch
+                if (path == 3) { dec_gdn_rec_seg(a, d_rows, (size_t) l * SF, R, 1, R, s, nullptr, 0, 0, gates); return; }
                 for (int k = 0; k < R; ++k) {
                     DecRecArgs r = a;
                     r.state = st + ((size_t) k * NL + l) * SF; r.qkv += (size_t) k * C; r.x += (size_t) k * N;

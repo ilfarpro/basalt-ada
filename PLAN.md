@@ -95,7 +95,10 @@ is reworked, not shipped.
 - [ ] Re-measure the card's gates for Ada's SM count: the QSA paths ship gated at `sms >= 128`
       (a 4090), and a 4080-class card has 80 SMs; re-tune or re-gate from measurements, not by
       lowering the number.
-- [ ] First milestone: a UD-Q4_K_XL Flash-Next pack runs end to end on a 4080-class card.
+- [x] First milestone: a UD-Q4_K_XL Flash-Next pack runs end to end on a 4080-class card.
+      (Done on a 4080 SUPER: prefill 39 tok/s, decode 27.8 tok/s over 32 tokens with spec/MTP; the card's
+      expert cache needs a --expert-cache margin for the window graphs - the auto fill left none, and the
+      verify graph instantiate failed.)
 - [ ] Benchmarks: Basalt vs Strata on one card, one pack, one drafter; ABBA with the power limit
       stated; decode in ms per window at T=1/4/8/16 with the acceptance rate; stock drivers only.
 

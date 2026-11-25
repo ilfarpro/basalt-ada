@@ -44,6 +44,7 @@ bool Verifier::WindowRecorder::gdn(int64_t l, const LayerView& v, bool read_q8, 
         ra.gamma = (const float*) wnm->data; ra.h = hb; ra.gate = gate; ra.beta = beta; ra.yq = v_.xq_;
         ra.C = (int) C; ra.n_embd = (int) N; ra.h_k = (int) HK; ra.h_v = (int) HV; ra.eps = EPS;
         ra.k0 = 0; ra.nk = v_.gs_nk0_; ra.qkv_out = qkv;
+        ra.o = v_.y_;   // a build without clusters runs the split family: the raw output arena, sized T * ZV
         dec_gdn_rec(ra, n, cs);
         dense_proj(4, GL.to, GL.wo0, v_.xq_, v_.bo_, Z0, (int) N, n, cs);
         goto gdn_done;
@@ -56,7 +57,8 @@ bool Verifier::WindowRecorder::gdn(int64_t l, const LayerView& v, bool read_q8, 
                          ((uintptr_t) wqkv->native_data & 15) == 0 && ((uintptr_t) wg->native_data & 15) == 0;
     const int gdnf = ((!v_.batch_rec_ || pair_ok) && N == 2560 && n <= kVerifyMaxT) ? dec_gdnf_mode() : 0;
     auto rec = [&](const DecRecArgs& ra) {
-        if (v_.batch_rec_) dec_gdn_rec_seg(ra, v_.segb_, (size_t) gi * gdn_floats, n, n, n, cs);
+        if (v_.batch_rec_)
+            dec_gdn_rec_seg(ra, v_.segb_, (size_t) gi * gdn_floats, n, n, n, cs, nullptr, 0, 0, v_.gab_);
         else dec_gdn_rec(ra, n, cs);
     };
     const bool gdnf_fork = gdnf >= 2 && v_.sh_cs_ != nullptr && v_.ev_fork_ != nullptr && v_.ev_join_ != nullptr;
@@ -87,6 +89,7 @@ bool Verifier::WindowRecorder::gdn(int64_t l, const LayerView& v, bool read_q8, 
         ra.gamma = (const float*) wnm->data; ra.h = hb; ra.gate = gate; ra.beta = beta; ra.yq = v_.xq_;
         ra.C = (int) C; ra.n_embd = (int) N; ra.h_k = (int) HK; ra.h_v = (int) HV; ra.eps = EPS;
         ra.early_trigger = pdl;   // PDL2: the out projection stages its weights
+        ra.o = v_.y_;   // a build without clusters runs the split family: the raw output arena, sized T * ZV
         {
             PdlScope pr(pdl);
             rec(ra);
@@ -112,6 +115,7 @@ bool Verifier::WindowRecorder::gdn(int64_t l, const LayerView& v, bool read_q8, 
         ra.dt = (const float*) wdt->data; ra.ssm_a = (const float*) wsa->data; ra.z = v_.z_;
         ra.gamma = (const float*) wnm->data; ra.h = hb; ra.gate = gate; ra.beta = beta; ra.yq = v_.xq_;
         ra.C = (int) C; ra.n_embd = (int) N; ra.h_k = (int) HK; ra.h_v = (int) HV; ra.eps = EPS;
+        ra.o = v_.y_;   // a build without clusters runs the split family: the raw output arena, sized T * ZV
         cudaStreamWaitEvent(cs, v_.ev_join_, 0);
         for (int i = 3; i <= 5; ++i) stamp(l, i);
         {
@@ -133,9 +137,9 @@ bool Verifier::WindowRecorder::gdn(int64_t l, const LayerView& v, bool read_q8, 
         ra.gamma = (const float*) wnm->data; ra.h = hb; ra.gate = gate; ra.beta = beta; ra.yq = v_.xq_;
         ra.C = (int) C; ra.n_embd = (int) N; ra.h_k = (int) HK; ra.h_v = (int) HV; ra.eps = EPS;
         ra.early_trigger = pdl;   // PDL2: the out projection stages its weights
+        ra.o = v_.y_;   // a build without clusters runs the split family: the raw output arena, sized T * ZV
         if (gdnf_fork) {
             if (gdnf == 2) gdnf_z_side();
-            ra.o = v_.y_;
             dec_gdn_rec_split(ra, n, cs);
             for (int i = 3; i <= 5; ++i) stamp(l, i);
             cudaStreamWaitEvent(cs, v_.ev_join_, 0);
