@@ -104,6 +104,29 @@ run on this card; with the gate lowered past `sms >= 128` for the measurement:
 
 **Verdict: the `sms >= 128` term is right for this card too, confirmed at 80 SMs - no change.**
 
+## dec_moe's designed non-TMA path against the card's limits (`dec_moe_parity --kq --bench`, 02:3x)
+
+The last PLAN bar item measured on the 4080 SUPER, all bitwise:
+
+- resident VRAM grouped call, T=8, 28 groups, 73.8 MB: 108.65 us = 680 GB/s, and its glue alone
+  87.14 us = 847 GB/s - at or above the card's measured tile-pattern ceiling (647 GB/s).
+- the staged PCIe copy (the streamed-experts path) runs 17.1-19.9 GB/s at 8/16/32/64 blocks
+  against the probed link's 18.4 - the link is the limit and the kernel reaches it; staged
+  compute of 7 groups is 22.7-25.4 us.
+
+Nothing sits between these kernels and their limits: closed.
+
+## Basalt vs Strata on the same card and pack (queued, the last PLAN item)
+
+Strata 0.2.21.1 is installed with the same pack (`Qwen3.8-Flash-Next-UD-Q4_K_XL`, GGUF shards)
+pinned to GPU 0 in the run config behind the `launch-ud-q4_k_xl-200k` profile. Its `standard-v1`
+suite (`docs/BENCHMARK_PROTOCOL.md`) is queued to run twice on a quiet window tonight, then the
+rows will be reported here beside the community series with the drafter each engine uses named
+(the pack's own; Strata runs `--spec 4 --spec-min-p 0.5` there, Basalt the engine default 8) and
+the 320 W power limit stated. Caveat recorded in advance: the protocols differ (community-1 is
+cold per fixture, standard-v1 is its own document) - the comparison is per-engine steady states,
+not a like-for-like protocol race; the ABBA repetition guards drift, not protocol.
+
 ## Knobs measured and rejected (2026-11-26)
 
 - **Expert cache beyond the auto 3040 slots**: `--expert-cache 3179` is what actually fits on this

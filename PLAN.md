@@ -58,9 +58,11 @@ is reworked, not shipped.
       `expert_read_ahead`, `expert_prefetch` and bitwise `moe_finish`; hy4flash's
       `engram_apply` and `l2_read_ahead`, which still stops at its mark and reads only the
       prefix.  (Out of the narrowed scope, done before it: the notes above stand as evidence.)
-      Remaining, now as the chain-fallback item below: `dec_moe` already carries a designed
-      non-TMA kernel path for older targets ("the host must not choose kind 1 there") - it needs
-      its Ada measurement against the bar, not new code.
+      Done: the dec_moe non-TMA path measured against the bar on the 4080 SUPER
+      (`dec_moe_parity --kq --bench`, 2026-11-26): the resident VRAM grouped call reads
+      73.8 MB at 680 GB/s (108.65 us) and its glue at 847 - at or above the card's measured
+      tile-pattern ceiling (647), and the staged PCIe copy runs 17-20 GB/s at 8/16/32/64
+      blocks, the probed link's own 18.4.  Nothing between the kernel and its limit there.
 - [x] Chain fallbacks made whole for an Ada main build: `hc_fused.cu`'s TMA body is sm_90-and-up
       guarded and the host runs the unfused `hc8_gr` there (3a830b07); `dense_ops.cu`'s gating
       GEMM gained an older-target whole-K copy beside the untouched Blackwell text, measured on
