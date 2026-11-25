@@ -990,6 +990,10 @@ set_tests_properties(window_gemm_two_gpu PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 
 # the FP8 and FP4 codes as bf16x2 (narrow_bf16.cuh): the direct cvt (CUDA 13.2+) and the f16 route, every input
 add_executable(narrow_bf16_parity tests/kernels/narrow_bf16_parity.cu)
 set_target_properties(narrow_bf16_parity PROPERTIES CUDA_ARCHITECTURES ${BASALT_CUDA_ARCH_A})
+# with a planned Ada main card the binary carries the sm_89 cubin too: run on each of the two cards, its digests must match
+if(PEER_ADA)
+  set_property(TARGET narrow_bf16_parity APPEND PROPERTY CUDA_ARCHITECTURES 89-real)
+endif()
 target_include_directories(narrow_bf16_parity PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(narrow_bf16_parity PRIVATE ${_gpu_runtime_target})
 basalt_gpu_test(NAME narrow_bf16_parity COMMAND narrow_bf16_parity)

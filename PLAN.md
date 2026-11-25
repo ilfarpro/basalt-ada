@@ -20,7 +20,7 @@ is reworked, not shipped.
       `prefill_fp4`/`prefill_fp8`/`prefill_q8`, `narrow_bf16_parity`) split into a portable body
       and an arch-accelerated one; CI builds the sm_89 main path.
 - [ ] Runtime: `gpu_main_supported` and the card gates accept sm_89.
-- [ ] `narrow_bf16`: an sm_89 body for the E2M1/E4M3 to bf16x2 path (`cvt.*.e2m1x2` and
+- [x] `narrow_bf16`: an sm_89 body for the E2M1/E4M3 to bf16x2 path (`cvt.*.e2m1x2` and
       `mul.rn.bf16x2` are Blackwell/sm_90+; keep the conversion exact); `narrow_bf16_parity`
       runs on sm_89.
 - [ ] Decode: `window_gemm` on sm_89 - the bf16 MMA with FP32 accumulation ports as is; the TMA

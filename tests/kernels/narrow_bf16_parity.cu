@@ -1,8 +1,10 @@
 // tests/kernels/narrow_bf16_parity.cu - the FP8 E4M3 and FP4 E2M1 conversions to bf16x2 (basalt/kernels/narrow_bf16.cuh)
-// against the f16 route the header takes before CUDA 13.2 and against the host's values: every pair of E4M3 bytes, and
-// every E2M1 byte at every UE4M3 scale byte in each byte of the word, bit for bit, NaNs included (their bits against the
-// other route; the host only says NaN).  Built with CUDA 13.2 or later this checks the direct instruction against the
-// fallback; built with 13.0 or 13.1 both sides are the fallback and the host values check it.  Exit 77 without a GPU.
+// against the card's other route and against the host's values: every pair of E4M3 bytes, and every E2M1 byte at every
+// UE4M3 scale byte in each byte of the word, bit for bit, NaNs included (their bits against the other route; the host
+// only says NaN).  On an sm_120a cubin the direct cvt (CUDA 13.2 or later) or the f16 route (13.0, 13.1) against the f16
+// route; on an sm_89 one the codes' bits from their fields and f32 against the f16 route.  Each kernel prints a digest
+// of its bits: a binary with both cubins (cmake -DPEER_ADA=ON) run on the two cards must print the same digests, which
+// is the two instruction sets' parity.  Exit 77 without a GPU.
 #include "basalt/kernels/narrow_bf16.cuh"
 
 #include <cuda_fp8.h>
@@ -40,6 +42,7 @@ __global__ void e2m1(unsigned* got, unsigned* alt) {
     const unsigned sc = bk::e4m3x2_bf16x2(s | (s << 8));
     unsigned h[4], t[4];
     bk::e2m1x8_bf16x2_scaled(e2m1_word(i), sc, h);
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
     bk::e2m1x8_bf16x2_via_f16(e2m1_word(i), t);
     for (int k = 0; k < 4; ++k) {
         unsigned d;
@@ -47,6 +50,21 @@ __global__ void e2m1(unsigned* got, unsigned* alt) {
         got[4 * i + k] = h[k];
         alt[4 * i + k] = d;
     }
+#else
+    bk::e2m1x8_bf16x2_scaled_via_f16(e2m1_word(i), bk::e4m3x2_bf16x2_via_f16(s | (s << 8)), t);
+    for (int k = 0; k < 4; ++k) {
+        got[4 * i + k] = h[k];
+        alt[4 * i + k] = t[k];
+    }
+#endif
+}
+
+// the bits one kernel produced, as one number per route (the printed per-word bits stay in the FAIL lines; the digests
+// are what a run on the sm_89 card and a run on the sm_120a one of the same binary must agree on)
+unsigned long long digest(const unsigned* p, size_t n) {
+    unsigned long long d = 1469598103934665603ull;
+    for (size_t i = 0; i < n; ++i) d = (d ^ p[i]) * 1099511628211ull;
+    return d;
 }
 
 float e4m3f(unsigned b) {
@@ -82,6 +100,10 @@ void check(const char* what, unsigned in, int half, unsigned got, unsigned alt, 
 int main() {
     int ndev = 0;
     if (cudaGetDeviceCount(&ndev) != cudaSuccess || ndev == 0) return 77;
+    cudaDeviceProp prop;
+    if (cudaGetDeviceProperties(&prop, 0) != cudaSuccess) return 77;
+    const bool blackwell = prop.major >= 12;  // which body the card's cubin runs, not which were built
+    std::printf("card %d.%d\n", prop.major, prop.minor);
     unsigned *got, *alt;
     if (cudaMalloc(&got, 4 * kN * sizeof(unsigned)) != cudaSuccess ||
         cudaMalloc(&alt, 4 * kN * sizeof(unsigned)) != cudaSuccess)
@@ -96,7 +118,8 @@ int main() {
     }
     for (unsigned i = 0; i < kN; ++i)
         for (int half = 0; half < 2; ++half) check("e4m3x2", i, half, g[i], a[i], e4m3f(i >> (8 * half)));
-    std::printf("e4m3x2: NaN 0x7f -> 0x%04x, 0xff -> 0x%04x\n", g[0x7f] & 0xffffu, g[0xff] & 0xffffu);
+    std::printf("e4m3x2: NaN 0x7f -> 0x%04x, 0xff -> 0x%04x, digest got 0x%016llx alt 0x%016llx\n", g[0x7f] & 0xffffu,
+                g[0xff] & 0xffffu, digest(g.data(), kN), digest(a.data(), kN));
 
     e2m1<<<kN / 256, 256>>>(got, alt);
     if (cudaMemcpy(g.data(), got, 4 * kN * sizeof(unsigned), cudaMemcpyDeviceToHost) != cudaSuccess ||
@@ -111,9 +134,13 @@ int main() {
             for (int half = 0; half < 2; ++half)
                 check("e2m1x8 scaled", i, half, g[4 * i + k], a[4 * i + k], e2m1f(w >> (8 * k + 4 * half)) * sc);
     }
+    std::printf("e2m1x8 scaled: digest got 0x%016llx alt 0x%016llx\n", digest(g.data(), 4 * kN),
+                digest(a.data(), 4 * kN));
 
     std::printf("%s (%s): %d failures\n", fails ? "FAIL" : "OK",
-                BASALT_CVT_BF16X2_NARROW ? "the direct cvt against the f16 route" : "the f16 route on both sides",
+                blackwell ? (BASALT_CVT_BF16X2_NARROW ? "the direct cvt against the f16 route"
+                                                      : "the f16 route on both sides")
+                          : "the fields and f32 against the f16 route",
                 fails);
     return fails ? 1 : 0;
 }
