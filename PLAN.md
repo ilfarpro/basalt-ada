@@ -115,6 +115,11 @@ is reworked, not shipped.
       verify graph instantiate failed.)
 - [ ] Benchmarks: Basalt vs Strata on one card, one pack, one drafter; ABBA with the power limit
       stated; decode in ms per window at T=1/4/8/16 with the acceptance rate; stock drivers only.
+      Reference for the next manual comparison (measured by hand on the 4080 SUPER at 93045a4b,
+      the current Ada implementation): a story-about-the-moon generation runs **52 tok/s decode**,
+      and a 91k-token prompt prefills at **3700 tok/s**. The repeating automated harness is
+      `basalt-bench` (the `--community` preset: three cold decode fixtures plus 16k/64k prefills);
+      its Ada series and every optimization's before/after live in `docs/ada-optimizations.md`.
 
 ## Later Ada work (out of the scope above)
 

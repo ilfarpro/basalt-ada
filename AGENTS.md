@@ -10,6 +10,7 @@ Basalt is a local inference engine built for NVIDIA Blackwell (sm_120) and Ada L
 - **Flag odd numbers.** Sanity-check every result before reporting it (size against speed, run-to-run spread, earlier numbers) and report anything odd with its suspected cause.
 - **Read before answering.** Check the code, docs and existing results before stating a fact about Basalt.
 - **Track planned work in [PLAN.md](PLAN.md).** It holds the current plan of scheduled work; read it before picking up a task and keep it current as plans change.
+- **Ada (sm_89) optimization work: benchmark results live in [docs/ada-optimizations.md](docs/ada-optimizations.md).** Every claimed speedup on an Ada main card records its before/after there; read it before measuring, and add a row after.
 - **No amends, no force-pushes.** Always make new commits.
 - **Don't push or publish anywhere** (GitHub, HF, any remote) without the user's approval.
 - **Don't write tools nobody asked for.**
