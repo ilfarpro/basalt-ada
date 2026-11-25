@@ -23,9 +23,15 @@ is reworked, not shipped.
 - [x] `narrow_bf16`: an sm_89 body for the E2M1/E4M3 to bf16x2 path (`cvt.*.e2m1x2` and
       `mul.rn.bf16x2` are Blackwell/sm_90+; keep the conversion exact); `narrow_bf16_parity`
       runs on sm_89.
-- [ ] Decode: `window_gemm` on sm_89 - the bf16 MMA with FP32 accumulation ports as is; the TMA
-      loads get a `cp.async` body designed for Ada's load pipeline (stage count, tile shape and
-      SM occupancy tuned on the card, not inherited from sm_120).
+- [x] Decode: `window_gemm` on sm_89 - the loads were already `cp.async` (this file has no TMA)
+      and the bf16 MMA with FP32 accumulation ports as is; the one Blackwell-only instruction was
+      `mul.rn.bf16x2`, whose bits sm_89 rebuilds exactly from f32 products and one
+      `cvt.rn.bf16x2.f32`.  On the 4080 SUPER `window_gemm_parity` is bitwise against the double
+      reference, ptxas spills nothing at 59-166 registers, and the bench sits at the card's
+      measured tile-pattern ceiling (640-679 GB/s against 647), so no shape was re-tuned from
+      sm_120.  Deferred with the free Blackwell card: `window_gemm_two_gpu` cross-card bitwise;
+      and the test binary exits at its last check there because its reference `rms_norm_rows`
+      (`dense_ops`, not in the peer file list) has no sm_89 cubin yet - a build-gate item below.
 - [ ] TMA audit: a `cp.async` body wherever the main path uses `cp.async.bulk` (`dense_tc`,
       `verify_kernels`, `qsa_mid`, `dec_moe`, `attn_chain`, `hc_fused`, the prefill GEMMs,
       inkling2/hy4flash ops); thread-block clusters only through the SPLIT instantiation pattern,

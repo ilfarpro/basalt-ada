@@ -1891,10 +1891,15 @@ if(BUILD_TESTING)
   basalt_gpu_test(NAME bf16_chunk_test COMMAND bf16_chunk_test)
   set_tests_properties(bf16_chunk_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300)
 endif()
-# a decode window's products against FP8 and NVFP4 matrices (the NVFP4 codes convert with sm_120a instructions)
+# a decode window's products against FP8 and NVFP4 matrices (the NVFP4 codes convert with sm_120a instructions,
+# narrow_bf16.cuh; sm_89 builds the same bf16x2 operands from their fields and f32)
 add_library(window_gemm STATIC src/kernels/cuda/window_gemm.cu src/kernels/cuda/window_gemm_f8.cu
                                src/kernels/cuda/window_gemm_nvfp4.cu)
 set_target_properties(window_gemm PROPERTIES CUDA_ARCHITECTURES ${BASALT_CUDA_ARCH_A})
+# with a planned Ada main card the binary carries the sm_89 cubin too: window_gemm_parity runs on either card
+if(PEER_ADA)
+  set_property(TARGET window_gemm APPEND PROPERTY CUDA_ARCHITECTURES 89-real)
+endif()
 target_include_directories(window_gemm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(window_gemm PUBLIC core ${_gpu_runtime_target})
 add_library(prefill_fp4 STATIC src/prefill/moe_fp4.cu src/prefill/fp4_dense.cu)
