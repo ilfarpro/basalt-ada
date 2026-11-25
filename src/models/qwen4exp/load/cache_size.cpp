@@ -82,8 +82,13 @@ int cache_size(Context& context) {
         const int64_t mtp_bind = (!o.mtp.empty() && draft_head.loaded())
                                      ? (int64_t) mtp.bind_bytes(draft_head.row_bytes(), draft_head.type(), n_vocab) : 0;
         // a server allocates its verify windows after the cache is sized: they come out of the reserve too, so the
-        // free VRAM after loading is the reserve itself
-        int64_t late_b = o.serve ? (kWindowMib << 20) : 0;
+        // free VRAM after loading is the reserve itself.  The generate path's verifier opens after the cache as
+        // well - its window runs after the prompt path - so a run that decodes in windows (--spec T) holds back
+        // the same room.  The arena is priced per token (~4 MiB each above the window's two), so a window wider
+        // than two holds back the margin plus the wider rows.
+        const int win_t = std::max(o.spec, o.serve ? 2 : 0);
+        int64_t late_b = (o.serve || o.spec >= 2)
+                             ? ((kWindowMib + (win_t > 2 ? (int64_t) (win_t - 2) * 5 : 0)) << 20) : 0;
         // the kernels that first run after the cache is sized (the prompt path's, the verify windows') load into the
         // reserve when modules load lazily.  A server loading every kernel up front still loads cuBLAS's GEMM kernels on
         // their first use and captures its window graphs after the cache, so the same room stays back for those, and
