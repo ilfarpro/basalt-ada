@@ -86,8 +86,11 @@ struct SegDst {
 /// most kDecMaxT).  Every output is the segment's own dec_gdn_rec's, bitwise.  With `dst` (one entry per entry of
 /// `rows`): `rows` lists the segments' first rows only, and each segment's qkv channels, h, gate and beta go to
 /// dst[k] + {off_c, off_c, off_hv, off_hv} instead of a.h / a.gate / a.beta at its window rows.
-void dec_gdn_rec_seg(const DecRecArgs& a, const SegRow* rows, size_t state_off, int n_rows, int max_n, void* stream,
-                     const SegDst* dst = nullptr, size_t off_c = 0, size_t off_hv = 0);
+/// n_tok: the window's total rows (the segments cover [0, n_tok)): a build for a target without thread-block clusters
+/// has no fused launch and runs this through dec_gdn_gates and dec_gdn_rec_seg_split (its scratch, when a.o is unset),
+/// where the Blackwell one ignores it.
+void dec_gdn_rec_seg(const DecRecArgs& a, const SegRow* rows, size_t state_off, int n_rows, int max_n, int n_tok,
+                     void* stream, const SegDst* dst = nullptr, size_t off_c = 0, size_t off_hv = 0);
 /// dec_gdn_rec_seg in two launches, the same bits: dec_gdn_rec_split's kernel per segment (no clusters, so two segments
 /// run in one wave) on the gates dec_gdn_gates wrote for the window's n_tok rows (`gates`), then dec_gdn_rec_norm over
 /// those rows.  a.o: the raw output, laid out as y (it may be a.y: each value is read and then written by one thread).

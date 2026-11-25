@@ -56,7 +56,7 @@ bool Verifier::WindowRecorder::gdn(int64_t l, const LayerView& v, bool read_q8, 
                          ((uintptr_t) wqkv->native_data & 15) == 0 && ((uintptr_t) wg->native_data & 15) == 0;
     const int gdnf = ((!v_.batch_rec_ || pair_ok) && N == 2560 && n <= kVerifyMaxT) ? dec_gdnf_mode() : 0;
     auto rec = [&](const DecRecArgs& ra) {
-        if (v_.batch_rec_) dec_gdn_rec_seg(ra, v_.segb_, (size_t) gi * gdn_floats, n, n, cs);
+        if (v_.batch_rec_) dec_gdn_rec_seg(ra, v_.segb_, (size_t) gi * gdn_floats, n, n, n, cs);
         else dec_gdn_rec(ra, n, cs);
     };
     const bool gdnf_fork = gdnf >= 2 && v_.sh_cs_ != nullptr && v_.ev_fork_ != nullptr && v_.ev_join_ != nullptr;
