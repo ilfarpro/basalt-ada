@@ -32,8 +32,8 @@ is reworked, not shipped.
       sm_120.  Deferred with the free Blackwell card: `window_gemm_two_gpu` cross-card bitwise;
       and the test binary exits at its last check there because its reference `rms_norm_rows`
       (`dense_ops`, not in the peer file list) has no sm_89 cubin yet - a build-gate item below.
-- [ ] TMA audit: a `cp.async` body wherever the main path uses `cp.async.bulk` (`verify_kernels`,
-      `dec_moe`, `attn_chain`, `hc_fused`, the prefill GEMMs, inkling2/hy4flash ops);
+- [ ] TMA audit: a `cp.async` body wherever the main path uses `cp.async.bulk` (`dec_moe`,
+      `attn_chain`, `hc_fused`, the prefill GEMMs, inkling2/hy4flash ops);
       thread-block clusters only through the SPLIT instantiation pattern, re-tuned for Ada's
       SM count.  Done: `dense_tc` and `qsa_mid` - the mbarrier phases stay, warp 0's bulk copy
       becomes 16-byte `cp.async.cg` chunks spread over the block with one
@@ -42,6 +42,11 @@ is reworked, not shipped.
       sm_89 - hung on a 4080 until fixed), and the consumer spins on `test_wait.parity`, whose
       "no longer in a phase of this parity" answer is exact when every phase is awaited in turn,
       as these loops do; Ada lacks `try_wait`.  Both parity tests are bitwise on the 4080 SUPER.
+      Done: `verify_kernels` - the lazy L2 read-ahead's bulk prefetch becomes 128-byte
+      `prefetch.global.L2` lines walked by the same lead thread (fire-and-forget, the step's
+      last-word read still waits for the part to land); `dec_commit_parity` is bitwise on the
+      4080 SUPER incl. the lazy read-ahead, whose bench reads 47 MB at ~670 GB/s once the
+      still-in-flight tail is discounted (the card's measured ceiling).
 - [ ] Prefill: replace the `kind::mxf4nvf4` paths with an Ada design, not an FP4 emulation: an
       FP8 tensor-core GEMM (Ada's full-rate path; a numerics move, the quality gate decides) or
       BF16 to FP32.

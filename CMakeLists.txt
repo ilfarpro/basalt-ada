@@ -558,12 +558,14 @@ if(PEER_ADA)
 endif()
 
 # Ada as a main card (PLAN.md): dense_tc's and qsa_mid's sm_89 bodies are designed for Ada, so their parity tests run
-# on an Ada card.  Per file, like the dec_moe files above: the rest of the qwen4exp kernel target is not sm_89-clean
+# on an Ada card; verify_kernels is plain CUDA apart from its lazy L2 prefetch, which reads line by line on Ada.
+# Per file, like the dec_moe files above: the rest of the qwen4exp kernel target is not sm_89-clean
 # yet, so the target as a whole cannot carry an 89 cubin.
 if(PEER_ADA)
   set_source_files_properties(
     src/models/qwen4exp/kernels/dense_tc.cu
     src/models/qwen4exp/kernels/qsa_mid.cu
+    src/models/qwen4exp/kernels/verify_kernels.cu
     PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
 endif()
 
@@ -637,6 +639,14 @@ set_source_files_properties(src/kernels/cuda/native_mmvq.cu src/kernels/cuda/nat
 # block above so its --use_fast_math survives; native_mmvq.cu has no sm_90-only instructions)
 if(PEER_ADA)
   set_source_files_properties(src/kernels/cuda/native_mmvq.cu
+    PROPERTIES COMPILE_OPTIONS "--use_fast_math;--generate-code=arch=compute_89,code=sm_89")
+endif()
+# dec_commit_parity's conv-commit side lives in the kernels library; plain CUDA, it runs on the Ada card too.  The
+# indexer it checks against is plain CUDA as well, and its --use_fast_math (set above) must survive.
+if(PEER_ADA)
+  set_source_files_properties(src/kernels/cuda/gdn_commit.cu
+    PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
+  set_source_files_properties(src/models/qwen4exp/kernels/native_qsa_indexer.cu
     PROPERTIES COMPILE_OPTIONS "--use_fast_math;--generate-code=arch=compute_89,code=sm_89")
 endif()
 

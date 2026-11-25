@@ -460,7 +460,16 @@ __global__ void __launch_bounds__(32 * RG) gdn_commit_lazy_kernel(GdnCommitLayer
             const uint64_t take = min(min(o1 - o, pf.n[r] - ro), (uint64_t) 32768);
             const char* src = (const char*) pf.p[r] + ro;
             if (take >= 16) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
                 asm volatile("cp.async.bulk.prefetch.L2.global [%0], %1;" ::"l"(src), "r"((unsigned) (take & ~15ull)) : "memory");
+#else
+                // Ada reads no bulk prefetch: the lead thread walks the step's bytes with prefetch.global.L2, one 128-byte
+                // line per request (PLAN.md: Ada main card).  The instruction is fire-and-forget and the step's last word
+                // read below waits for the part to land, exactly as with the bulk form; the issue loop is ~1 request per
+                // byte-of-bulk per 128, far shorter than the memory wait it hides.
+                for (const char* q = src; q < src + (take & ~15ull); q += 128)
+                    asm volatile("prefetch.global.L2 [%0];" ::"l"(q) : "memory");
+#endif
                 last = src + (take & ~15ull) - 16;
             }
             o += take;
