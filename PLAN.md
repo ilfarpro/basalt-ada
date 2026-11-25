@@ -61,19 +61,21 @@ is reworked, not shipped.
       Remaining, now as the chain-fallback item below: `dec_moe` already carries a designed
       non-TMA kernel path for older targets ("the host must not choose kind 1 there") - it needs
       its Ada measurement against the bar, not new code.
-- [ ] Chain fallbacks made whole for an Ada main build: the Blackwell chain kernels
-      (`mid_chain`'s `k_mid`, `attn_chain`, `hc_fused`, `gdn_window`'s `dec_gdn_rec` family,
-      `dense_ops`' `this_cluster()` site) are capability-gated - `mid_chain_init` already logs
-      "the unfused kernels run" - but the 89 probe shows the tree does not yet compile there:
-      `hc_fused.cu` needs its TMA helpers behind the same `>= 900` guard `mid_chain.cu` uses;
-      `gdn_window.cu`'s host side launches the cluster-only `rec_kernel`/`rec_seg_kernel`/
-      `gates_kernel` with no older-target definition and `record_gdn.cpp` calls `dec_gdn_rec`
-      unconditionally - GDN record needs an Ada design (the bar: measured, not just running);
-      `dense_ops.cu`'s cluster form of `gdn_gating_proj_kernel` (DSMEM split reduction) needs
-      its non-cluster form or gate.
-      The unfused pieces every fallback names (`fused_gdn`, `gdn`, `hc8_gr`, `qsa_decode_attn`,
-      `qsa_dec_fused`, the prompt `gemm`/`kernels`/`moe_fused*`, `moe_mmq`, every other
-      qwen4exp kernel file) compile clean for sm_89 already.
+- [x] Chain fallbacks made whole for an Ada main build: `hc_fused.cu`'s TMA body is sm_90-and-up
+      guarded and the host runs the unfused `hc8_gr` there (3a830b07); `dense_ops.cu`'s gating
+      GEMM gained an older-target whole-K copy beside the untouched Blackwell text, measured on
+      a 4080 SUPER in `dense_ops_parity`: 88.5 us against the unfused 116.2 (3be8c171);
+      `gdn_window.cu`'s fused entries run the split family on an older target's build (the gates
+      inside the kernel or in window-sized pieces through `dec_gdn_gates`, the raw output in its
+      scratch, the gated norm after it, and the split kernel writes `state_out` there),
+      `dec_gdn_rec_seg` carrying the window row count for it; `dec_gdn_parity` (cluster gate
+      dropped, a bitwise state_out-vs-commit check added) and `gdn_seg_split_parity` pass
+      bitwise on the 4080 SUPER, and `mid_chain`'s `k_mid`/`attn_chain` stay capability-gated
+      at run time (a2a77a47: the sm_120 SASS of `gdn_window`, `mid_chain` and `dec_moe` is
+      unchanged, the peer TU's object byte-identical).
+      The rest (`fused_gdn`, `gdn`, `qsa_decode_attn`, `qsa_dec_fused`, the prompt
+      `gemm`/`kernels`/`moe_fused*`, `moe_mmq`, every other qwen4exp kernel file) already
+      compiles clean for sm_89.
 - [ ] Build: `cmake/target_arch.cmake` takes 89 (the probe's whole-tree blockers are exactly the
       file set of the item above plus the FP4 bodies); the `120a`-only targets split into a
       portable and an arch-accelerated body - for this scope `prefill_fp4`/`prefill_fp8`/
