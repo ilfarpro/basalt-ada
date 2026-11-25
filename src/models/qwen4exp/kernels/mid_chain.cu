@@ -577,7 +577,13 @@ void mid_chain_init() {
     cudaDeviceGetAttribute(&optin, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev);
     cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, dev);
     if (!hc_fused_supported() || sms < kMidMinCtas || optin < SMEM_MAX) {
-        basalt::log::warn("basalt", "mid_chain: device not covered (%d SMs, %d B optin smem; need %d, %d): the unfused kernels run", sms, optin, kMidMinCtas, SMEM_MAX);
+        // name the term that refused: hc_fused_supported is the fused read's own device check (major == 12), and on a
+        // refused device the SM and smem numbers usually both pass, so printing them alone blames the wrong term
+        const char* why = !hc_fused_supported() ? "the fused read is not supported here"
+                        : sms < kMidMinCtas    ? "too few SMs"
+                                               : "shared memory per block short";
+        basalt::log::warn("basalt", "mid_chain: not covered (%s; %d SMs need %d, %d B optin smem need %d): the unfused kernels run",
+                          why, sms, kMidMinCtas, optin, SMEM_MAX);
         return;
     }
     d.ctas = sms < kMidCtas ? sms : kMidCtas;
