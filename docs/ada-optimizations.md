@@ -55,8 +55,8 @@ The "re-tune the `sms >= 128` gates" plan item resolves into one live gate and o
   Ampere cp.async). `mid_chain_init` reports "not covered (80 SMs, 101376 B optin smem; need 16,
   101376)" but the two numbers it prints both pass; the failing condition is its
   `hc_fused_supported()` guard. Ada runs the unfused hc8 kernels and the mid layer runs as staged
-  (`cp.async`), checked bit for bit - no re-tune reaches these. The warning text should name the
-  reason it actually refuses (tracked below).
+  (`cp.async`), checked bit for bit - no re-tune reaches these. The warning now names the term
+  that refused (11ef05b9).
 - **`qsa_qproj_half` is genuinely Ada-capable and the one live SM gate.** `qsa_mid.cu`/`dense_tc.cu`
   carry `>= 800` and a `>= 800 && < 900` Ada branch; the fused half path is a performance policy, and
   the only term of the gate that fails at 80 SMs is `sms >= 128`. At this geometry the other two pass
@@ -67,8 +67,9 @@ The "re-tune the `sms >= 128` gates" plan item resolves into one live gate and o
 ## Is decode RAM-bound on this machine? (2026-11-26, the user's question)
 
 The machine's steady state includes the user's serve (NVFP4 pack on the 5060 Ti): it pins 73.5 GiB
-of experts in RAM and spins ~10 cores (986% CPU) - my bench pins another 67.6 GiB, together about
-141 of the 188 GiB, and both engines' expert pools read the same DDR5 channels. The hand benchmark
+of experts in RAM, its host loop spins a core, and its real traffic arrives in bursts that hold
+10-20 cores for minutes at a time - my bench pins another 67.6 GiB, together about 141 of the
+188 GiB, and both engines' expert pools read the same DDR5 channels. The hand benchmark
 runs in the same conditions, so the comparison holds.
 
 - Expert traffic, conv fixture: ~597 expert lookups per generated token, cache hit 62.9% at
