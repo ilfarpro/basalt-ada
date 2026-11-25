@@ -22,6 +22,12 @@ nvcc, DDR5 188 GiB host. The second card (RTX 5060 Ti) runs a serve and is never
   QSA prelude; the fp16 default runs a different engine and is not comparable.
 - **Manual reference (the user's runs):** a story-about-the-moon generation, and a 91k-token
   prompt prefill.
+- **Moon reproduction (mine, for cross-session comparison):**
+  `bin/basalt generate --model <pack> --tokens-file moon_ids.txt --max-new 800 --kv int8
+  --vram-reserve-mib 128` from a cold process, moon_ids.txt = the tokens of
+  `"Write a short story about the moon."` wrapped in the pack's chat template (16 tokens,
+  encoded with the repo's own `tools/tokenizer.py`). The user's hand prompt is not this exact
+  text; the row compares build to build, not to the 52 tok/s figure token-for-token.
 
 | date | HEAD | decode conv/struct/prose (tok/s) | decode weighted | prefill 16k / 64k (tok/s) | notes |
 |---|---|---|---|---|---|
