@@ -7,6 +7,7 @@
 // whatever the window width or the row's place in it; the prompt kernel's rows agree with decode's within fp16 rounding.
 // Exit 77 without a GPU.  Prints one line per check and a microbench line for the decode and prompt kernels.
 #include "basalt/kernels/dense_ops.hpp"
+#include "basalt/core/cuda_cc.hpp"
 #include "basalt/kernels/f16_bits.hpp"
 #include "basalt/kernels/gqa_attn.hpp"
 
@@ -988,7 +989,12 @@ int main(int argc, char** argv) {
             basalt::kernels::gqa_decode_attn_segs(dq, NH, NKV, sg, 2, dscr, cap, dout, nullptr);
             fold(hash[3], (size_t) 12 * NH * HD);
         }
-        const unsigned long long frozen[4] = {0x430a8888287f57faull, 0xb6471ecdf9c79b73ull, 0x1c64ae81d108b6b5ull, 0x24e2ead0c780fabeull};
+        // the hashes freeze each target's own codegen: the values an older target compiles differ from Blackwell's
+        const unsigned long long k_blackwell[4] = {0x430a8888287f57faull, 0xb6471ecdf9c79b73ull,
+                                                   0x1c64ae81d108b6b5ull, 0x24e2ead0c780fabeull};
+        const unsigned long long k_older[4] = {0xec78e5deba2e2dfbull, 0x493718b7e4c861d4ull,
+                                               0x8752e49cc5f0b348ull, 0xb0eaf8f13b4c89f0ull};
+        const unsigned long long* frozen = basalt::core::kCudaCC >= 120 ? k_blackwell : k_older;
         std::printf("decode hashes: %016llx %016llx %016llx %016llx\n", hash[0], hash[1], hash[2], hash[3]);
         bool frozen_ok = true;
         for (int i = 0; i < 4; ++i) frozen_ok = frozen_ok && hash[i] == frozen[i];

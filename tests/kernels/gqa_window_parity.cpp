@@ -10,6 +10,7 @@
 // --bench: the full-attention layer's call (a window of 1..32 rows over every cell) at 4K..160K cells, us per call and
 // the K/V bytes read once per call over that time, and the sliding layer's call.  Exit 77 without a GPU.
 #include "basalt/kernels/f16_bits.hpp"
+#include "basalt/core/cuda_cc.hpp"
 #include "basalt/kernels/gqa_attn.hpp"
 
 #include <cuda_runtime.h>
@@ -192,7 +193,8 @@ int main(int argc, char** argv) {
     std::printf("gqa_window_attn: a deep window's rows bitwise their one-row windows: %s (%d of %d differ)\n",
                 place_diff || !placed ? "NO" : "yes", place_diff, placed);
     if (place_diff || !placed) ++fails;
-    const unsigned long long frozen = 0x966f4088b1f5f753ull;   // the one-tile kernel's
+    // the hash freezes each target's own codegen: Blackwell's and an older target's kernels compile different bits
+    const unsigned long long frozen = basalt::core::kCudaCC >= 120 ? 0x966f4088b1f5f753ull : 0xea4ef8b981d45552ull;
     std::printf("gqa_window_attn hash: %016llx (bits against the frozen hash: %s)\n", hash, hash == frozen ? "identical" : "DIFFERENT");
     if (hash != frozen) ++fails;
     cudaFree(full.dk); cudaFree(full.dv); cudaFree(ring.dk); cudaFree(ring.dv); cudaFree(dscr); cudaFree(dwide);

@@ -3,6 +3,7 @@
 // each row the same whatever the chunk's length, and a segmented product against separate products.  --bench: TFLOP/s (random data) at the Qwen3.8-27B projection shapes,
 // 2048 rows, and the segmented products.  Exit 77 without a GPU.
 #include "basalt/prefill/fp8_gemm.hpp"
+#include "basalt/core/cuda_cc.hpp"
 
 #include <cuda_fp8.h>
 #include <cuda_runtime.h>
@@ -47,6 +48,10 @@ void fill_x(float* d, size_t n, uint64_t seed) {
 int main(int argc, char** argv) {
     int ndev = 0;
     if (cudaGetDeviceCount(&ndev) != cudaSuccess || ndev == 0) return 77;
+    if (basalt::core::kCudaCC < 120) {   // fp8_gemm.cu: the block-scaled MMA path compiles for Blackwell only
+        std::printf("fp8_gemm_test: the FP8 prefill is not built for an sm_%d target\n", basalt::core::kCudaCC);
+        return 77;
+    }
     std::mt19937 rng(3);
     std::normal_distribution<float> nd;
     if (argc > 1 && std::strcmp(argv[1], "--bench") == 0) {

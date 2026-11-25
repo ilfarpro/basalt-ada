@@ -4,6 +4,7 @@
 #include "basalt/kernels/dense_ops.hpp"
 #include "basalt/kernels/gdn_prompt.hpp"
 #include "basalt/prefill/fp8_gemm.hpp"
+#include "basalt/core/cuda_cc.hpp"
 
 #include <cuda_runtime.h>
 
@@ -38,6 +39,10 @@ std::vector<float> randn(size_t n, std::mt19937& rng, float sd, float mean = 0.0
 int main() {
     int ndev = 0;
     if (cudaGetDeviceCount(&ndev) != cudaSuccess || ndev == 0) return 77;
+    if (basalt::core::kCudaCC < 120) {   // the products these producers feed are Blackwell's (fp8_gemm.cu)
+        std::printf("e4m3_producers_test: the FP8 prefill is not built for an sm_%d target\n", basalt::core::kCudaCC);
+        return 77;
+    }
     std::mt19937 rng(11);
     bool ok = true;
     {   // attention: 24 heads of 256, the gate in q_full's second half

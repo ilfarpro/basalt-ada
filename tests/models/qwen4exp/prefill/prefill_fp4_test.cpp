@@ -18,6 +18,7 @@
 // and the gate/up product follows the A4 reference.  Then a microbench line (--no-bench skips it).  Exit 77 without a
 // CUDA device.
 #include "basalt/prefill/moe_fp4.hpp"
+#include "basalt/core/cuda_cc.hpp"
 #include "basalt/prefill/moe_mmq.hpp"
 
 #include "basalt/ggml/ggml.h"
@@ -905,6 +906,10 @@ void bench(cudaStream_t s) {
 
 int main(int argc, char** argv) {
     int ndev = 0;
+    if (basalt::core::kCudaCC < 120) {   // moe_fp4.cu: the NVFP4 expert prefill is Blackwell's
+        std::printf("prefill_fp4_test: the NVFP4 expert prefill is not built for an sm_%d target\n", basalt::core::kCudaCC);
+        return 77;
+    }
     if (cudaGetDeviceCount(&ndev) != cudaSuccess || ndev == 0) {
         std::printf("no CUDA device: skipped\n");
         return 77;

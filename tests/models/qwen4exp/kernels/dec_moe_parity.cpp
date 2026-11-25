@@ -24,6 +24,7 @@
 #include "basalt/artifact/gguf_reader.hpp"
 #include "basalt/ggml/ggml.h"
 #include "basalt/models/qwen4exp/kernels/dec_moe.hpp"
+#include "basalt/core/cuda_cc.hpp"
 #include "basalt/kernels/elementwise.hpp"
 #include "basalt/kernels/iq_kernels.hpp"
 #include "basalt/models/qwen4exp/kernels/native_moe.hpp"
@@ -583,6 +584,12 @@ int main(int argc, char** argv) {
         while (std::getline(ss, t, ',')) layers.push_back(std::atoi(t.c_str()));
     }
     const bool nvfp4 = std::strcmp(argv[1], "--nvfp4") == 0, kq = std::strcmp(argv[1], "--kq") == 0;
+    // NVFP4 expert rows decode on the block-scaled tensor cores, whose kernels an sm_89 build does not compile
+    // (the same refusal the runtime gate gives a pack); an older target's build never sees the format.
+    if (nvfp4 && basalt::core::kCudaCC < 120) {
+        std::printf("dec_moe_parity: NVFP4 experts are not built for an sm_%d target\n", basalt::core::kCudaCC);
+        return 77;
+    }
     const bool synth = nvfp4 || kq;
     std::unique_ptr<basalt::GgufFile> gguf_p;
     if (!synth) gguf_p = std::make_unique<basalt::GgufFile>(argv[1]);
