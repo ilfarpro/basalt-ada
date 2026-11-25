@@ -1,10 +1,10 @@
 # Contributing to Basalt
 
-Basalt is a local inference engine for NVIDIA Ada Lovelace and Blackwell GPUs. Every rule below exists to keep its models fast and correct on those targets.
+Basalt is a local inference engine for NVIDIA Blackwell and Ada Lovelace GPUs. Every rule below exists to keep its models fast and correct on those targets.
 
 ## Scope
 
-- **CUDA on Ada Lovelace (sm_89) and Blackwell (sm_120) only.** No ROCm/HIP, no AMD, no Intel/SYCL/oneAPI, no Apple/Metal, no CPU-only main path (a CPU fallback is fine where the GPU path is the default, like the experts held in RAM or `--vision cpu`), and no other NVIDIA architectures (Ampere sm_86 and earlier, Hopper sm_90). No compatibility layers or `#if` branches for them. Pull requests adding another backend or architecture will be closed.
+- **CUDA on Blackwell (sm_120) and Ada Lovelace (sm_89) only.** No ROCm/HIP, no AMD, no Intel/SYCL/oneAPI, no Apple/Metal, no CPU-only main path (a CPU fallback is fine where the GPU path is the default, like the experts held in RAM or `--vision cpu`), and no other NVIDIA architectures (Ampere sm_86 and earlier, Hopper sm_90). No compatibility layers or `#if` branches for them. Pull requests adding another backend or architecture will be closed.
 - **Linux and Windows x64 are both supported.** CI compiles and CPU-tests Windows on every pull request. Windows-only issues get a `windows` label.
 - **Engine code is platform-neutral.** No OS or compiler names and no raw OS calls outside the platform layer; a missing seam is added there with a Linux and a Windows body. See [platforms](docs/platforms.md).
 - **Engine log lines carry their level.** A line to stderr goes through `include/basalt/log.hpp` (`basalt::log::info`, `warn` or `error`), which writes `basalt <area>: [warning: |error: ]<text>`; the server and the terminal read the level from that marker and never from the words. A warning is a fallback or a lost function, an error is a failure or a refusal, everything else is info. `tools/check_stderr_logging.sh` fails when engine code names stderr anywhere else. Lines are terse facts (what was decided, its value, at most the flag to change it), and the text of lines the server parses does not change.
@@ -62,7 +62,7 @@ Basalt is a local inference engine for NVIDIA Ada Lovelace and Blackwell GPUs. E
   3. Commit the new or changed file.
   4. Open a pull request; the `community` workflow runs the same check.
   5. Once merged, the row appears on the [runs page](https://basalt.jgulfo.com/community/).
-- Any Ada Lovelace (sm_89) or Blackwell (sm_120) machine with spare hours helps; bigger setups help most: 96 GB+ VRAM (single large cards or multi-GPU), quad- or octa-channel DDR5.
+- Any Blackwell (sm_120) or Ada Lovelace (sm_89) machine with spare hours helps; bigger setups help most: 96 GB+ VRAM (single large cards or multi-GPU), quad- or octa-channel DDR5.
 - A few hours of remote access to a machine speeds up development.
 - Or sponsor the project through GitHub Sponsors (the repository's Sponsor button): it pays for tokens for agentic development and for time on different hardware to test on.
 
