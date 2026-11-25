@@ -1,12 +1,11 @@
 # Platforms
 
-Linux x64 and Windows x64 with NVIDIA Blackwell (sm_120), and Linux Arm64 with the integrated Blackwell GPU (sm_121) of the DGX
+Linux x64 and Windows x64 with an NVIDIA Blackwell (sm_120) or Ada Lovelace (sm_89) GPU, and Linux Arm64 with the integrated Blackwell GPU (sm_121) of the DGX
 Spark, described in [arm64](arm64.md). Linux x64 is where the engine is tested and benchmarked. CI builds all three and runs the
 CPU tests on each. The GPU tests and the quality gate need a card.
 
-The main card is always sm_120, with one exception in the multi-GPU tier: when built with `-DPEER_ADA=ON`, a second card of sm_89 (Ada) can be a Flash-Next peer that holds and
-computes experts (`gpu-mode peer`, [GPUs](configuration/gpus.md#an-older-peer-card)); every other path and every other
-architecture is Blackwell-only.
+The main card is sm_120 (Blackwell) or sm_89 (Ada Lovelace). In the multi-GPU tier, when built with `-DPEER_ADA=ON`, a second card of sm_89 (Ada) can be a Flash-Next peer that holds
+and computes experts for a Blackwell main card (`gpu-mode peer`, [GPUs](configuration/gpus.md#an-older-peer-card)). No other NVIDIA architecture runs any path.
 
 | | Linux | Windows | Linux Arm64 |
 | --- | --- | --- | --- |

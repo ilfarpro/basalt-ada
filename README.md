@@ -1,12 +1,12 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/basalt-lockup-dark.png"><img src="assets/basalt-lockup-light.png" alt="Basalt" width="480"></picture></p>
 
 Basalt is a local inference engine for large language models: **Qwen3.8-Flash-Next**, **DeepSeek-V4.1-Flash**, **Qwen3.8-27B**, **Hy4-flash** and **Inkling 2 Mini**. It runs
-on an NVIDIA Blackwell GPU (sm_120) on Linux and Windows x64, and on the DGX Spark (GB10, Arm64), with what does not fit in VRAM
+on an NVIDIA Blackwell (sm_120) or Ada Lovelace (sm_89) GPU on Linux and Windows x64, and on the DGX Spark (GB10, Arm64), with what does not fit in VRAM
 (the experts of a mixture-of-experts model) in system RAM, and optionally on more GPUs. The server speaks the OpenAI and Anthropic APIs. Website: [basalt.jgulfo.com](https://basalt.jgulfo.com).
 
 <p align="center"><img src="docs/img/frontend.gif" alt="The Basalt web UI while a reply streams" width="720"></p>
 
-**Help wanted:** spare Blackwell compute for testing? See [Contributing](CONTRIBUTING.md#other-ways-to-help).
+**Help wanted:** spare Blackwell or Ada compute for testing? See [Contributing](CONTRIBUTING.md#other-ways-to-help).
 
 <p align="center">
   <a href="https://github.com/sponsors/jesdga95"><img src="assets/donate/github.svg" height="44" alt="Sponsor on GitHub"></a>
@@ -16,7 +16,7 @@ on an NVIDIA Blackwell GPU (sm_120) on Linux and Windows x64, and on the DGX Spa
 
 ## Requirements
 
-- Linux x86-64 with AVX2, or Windows 10 1903+ x64, with an NVIDIA Blackwell GPU (compute capability 12.0) ([platforms](docs/platforms.md)).
+- Linux x86-64 with AVX2, or Windows 10 1903+ x64, with an NVIDIA Blackwell (compute capability 12.0) or Ada Lovelace (8.9) GPU ([platforms](docs/platforms.md)).
 - Or a DGX Spark or another GB10 machine: Linux Arm64 with its integrated Blackwell GPU (12.1) ([Arm64](docs/arm64.md)).
 - CUDA 13.
 - CMake 3.24+, GCC 13+ (Linux), Python 3.10+, and enough system RAM for the experts that do not fit in VRAM.
