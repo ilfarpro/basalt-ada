@@ -1,4 +1,5 @@
 // The whole start of a Flash-Next engine, in order: its stack frames hold the resources while the server runs.
+#include "basalt/core/cuda_cc.hpp"
 #include "basalt/core/diag.hpp"
 #include "basalt/core/device.hpp"
 #include "basalt/core/shipped_profiles.hpp"
@@ -196,6 +197,15 @@ int run_engine(Options& o, std::vector<program::GpuCard>& chosen_cards) {
                               f.up_type != f.gu_type ? basalt::ggml_type_name((uint32_t) f.up_type) : "",
                               basalt::ggml_type_name((uint32_t) f.d_type), f.gu_type, f.up_type, f.d_type);
                 return fatal_start_error(msg);
+            }
+            // NVFP4 experts (ggml type 40) decode on Blackwell's block-scaled tensor cores and prompt through the
+            // FP4 bodies, which an older target's build does not compile: the pack is refused here, named, rather
+            // than dying on a kernel image at the first routed token.
+            if (basalt::core::kCudaCC < 120 && (f.gu_type == 40 || f.up_type == 40 || f.d_type == 40)) {
+                return fatal_start_error("layer " + std::to_string((long long) l) +
+                                         "'s experts are NVFP4: an NVFP4 pack runs on a Blackwell build (sm_120 or "
+                                         "sm_121), which decodes it on the block-scaled tensor cores; this engine "
+                                         "was built for " + basalt::core::cuda_cc_name() + ", its NVFP4 kernels are not built");
             }
             // Q6_K experts run on the fast kernels only (decode-once grouped / device-planned tail, MMQ prefill, CPU
             // dot): a pair or shape outside them is refused rather than routed to a general path.

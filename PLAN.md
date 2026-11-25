@@ -88,9 +88,10 @@ is reworked, not shipped.
       pass; CI gains `build-ada-main` (compile + CPU tests, qwen4exp). `gpu_select.cpp`'s sm_89-as-peer
       special cases now mean "sm_89 as a foreign arch" (they no longer fire when 89 is the build's own
       capability) and `gpu_select_test` names the build's capability through `kCudaCCMajor/Minor`.
-- [ ] Runtime: the card gates accept sm_89 (done with the item above: `gpu_main_supported` follows
-      `cuda_cc_is_ours`), and the NVFP4 packs are refused on an Ada main card with a clear message
-      while their kernels stay unbuilt.
+- [x] Runtime: the card gates accept sm_89 (`gpu_main_supported` follows `cuda_cc_is_ours`, the build item
+      above), and a native pack with NVFP4 experts is refused at the start of an older target's build, in the
+      format check `qfn_run.cpp` already runs before any allocation ("its NVFP4 kernels are not built") -
+      its kernels stay unbuilt there.
 - [ ] Re-measure the card's gates for Ada's SM count: the QSA paths ship gated at `sms >= 128`
       (a 4090), and a 4080-class card has 80 SMs; re-tune or re-gate from measurements, not by
       lowering the number.
