@@ -9,6 +9,7 @@ Basalt is a local inference engine built for NVIDIA Blackwell (sm_120) and Ada L
 - **Design the end state first.** Before writing code, design the architecture properly and read similar code. If a model already implements the feature, reuse that logic or make it shared. Do not propose features or improvements before testing them and checking the architecture.
 - **Flag odd numbers.** Sanity-check every result before reporting it (size against speed, run-to-run spread, earlier numbers) and report anything odd with its suspected cause.
 - **Read before answering.** Check the code, docs and existing results before stating a fact about Basalt.
+- **Track planned work in [PLAN.md](PLAN.md).** It holds the current plan of scheduled work; read it before picking up a task and keep it current as plans change.
 - **No amends, no force-pushes.** Always make new commits.
 - **Don't push or publish anywhere** (GitHub, HF, any remote) without the user's approval.
 - **Don't write tools nobody asked for.**
