@@ -974,6 +974,11 @@ constexpr int CAND_WORDS = 2 * NE + 2 * KT;   // hc_top10's shared memory per wa
 
 template <int T, bool DBG>
 __global__ void __launch_bounds__(THREADS, 1) hc_fused_kernel(const __grid_constant__ HcLaunch L) {
+    // The primitives above are TMA and sm_90 mbarriers (a bulk copy, `try_wait`, the cluster-scope init fence); on an
+    // older target the body is dropped and the kernel is an empty shell the host never launches: `dev_info` names
+    // Blackwell, `hc_fused_supported` says so, and the callers run the unfused hc8 kernels.  Mid_chain.cu guards its
+    // own body the same way.
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 900
     extern __shared__ __align__(128) char smem[];
     __shared__ __align__(8) uint64_t bars[2];   // the up slice's copy, the router rows
     __shared__ __align__(8) uint64_t dbars[WARPS];   // the down items' rows, per warp
@@ -1140,6 +1145,7 @@ __global__ void __launch_bounds__(THREADS, 1) hc_fused_kernel(const __grid_const
             __threadfence();
         }
     }
+#endif
 }
 
 #ifndef FZ_DEV_ONLY   // host side: another translation unit (the mid chain) takes only the device code
