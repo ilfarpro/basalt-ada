@@ -557,6 +557,16 @@ if(PEER_ADA)
     PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
 endif()
 
+# Ada as a main card (PLAN.md): dense_tc's and qsa_mid's sm_89 bodies are designed for Ada, so their parity tests run
+# on an Ada card.  Per file, like the dec_moe files above: the rest of the qwen4exp kernel target is not sm_89-clean
+# yet, so the target as a whole cannot carry an 89 cubin.
+if(PEER_ADA)
+  set_source_files_properties(
+    src/models/qwen4exp/kernels/dense_tc.cu
+    src/models/qwen4exp/kernels/qsa_mid.cu
+    PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
+endif()
+
 # ---- kernels ----
 # Naive first, each with a parity test against a reference that was itself validated against ggml.  The
 # kernels link `artifact` for the scalar dequantizers, because using the VALIDATED scalar path as the
@@ -623,6 +633,12 @@ set_source_files_properties(src/kernels/cuda/native_mmvq.cu src/kernels/cuda/nat
     src/models/qwen4exp/kernels/q80_proxy.cu
     src/models/qwen4exp/kernels/q80_vhead.cu
     PROPERTIES COMPILE_OPTIONS "--use_fast_math")
+# dense_tc_parity's reference side: the native mmvq runs on the Ada card beside the kernels it checks (set AFTER the
+# block above so its --use_fast_math survives; native_mmvq.cu has no sm_90-only instructions)
+if(PEER_ADA)
+  set_source_files_properties(src/kernels/cuda/native_mmvq.cu
+    PROPERTIES COMPILE_OPTIONS "--use_fast_math;--generate-code=arch=compute_89,code=sm_89")
+endif()
 
 # ---- engine -----------------------------------------------------
 # The COMPOSED layer lives here and not in `core`, because it calls kernels and `kernels`

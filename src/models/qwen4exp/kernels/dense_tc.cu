@@ -60,7 +60,7 @@ __host__ __device__ constexpr int one_row_stride(int row_bytes) {
 __device__ __align__(4) int8_t dtc_iq4nl[16] = {-127, -104, -83, -65, -49, -35, -22, -10,
                                                 1,    13,   25,  38,  53,  69,  89,  113};
 
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 __device__ __forceinline__ void mma_k32(int (&d)[4], uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t b0,
                                         uint32_t b1) {
     asm("mma.sync.aligned.m16n8k32.row.col.s32.s8.s8.s32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%10,%10,%10,%10};\n"
@@ -352,7 +352,56 @@ __device__ __forceinline__ void half_sb_terms(float (&acc)[4], const uint8_t* co
 }
 #endif
 
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800 && __CUDA_ARCH__ < 900
+// The producer and consumer on Ada (sm_89, PLAN.md: Ada main card).  The mbarrier phases are the sm_90 ones;
+// only the two instructions Ada lacks are replaced.  warp 0's bulk copy becomes a cp.async staging every thread
+// of the block takes part in, each arriving once per issue through cp.async.mbarrier.arrive.noinc - after all the
+// cp.async chunks that thread issued, so a phase completes exactly when every thread's chunks of that issue
+// landed.  .noinc matters: the plain form pre-increments the pending arrival count, so with every arrival being
+// such an arrive the phase never completes (measured on a 4080: the wait hangs); noinc makes it exactly one
+// arrival per thread per issue, which is what the init count counts.  A slot is re-issued only after the
+// __syncthreads() that follows its read, which is after its phase completed for the whole block, so arrivals of
+// one phase can never be counted for the next.  cp.async needs no async-proxy fence.  try_wait is sm_90, so the
+// consumer spins on test_wait: Ada's test_wait.parity answers "the mbarrier no longer sits in a phase of this
+// parity", which is the sm_90 answer as long as one waits for every phase in turn, as the loops below do.
+
+// [src, src + bytes) into dst, both 16-byte aligned, in 16-byte chunks spread over the block's threads
+__device__ __forceinline__ void dtc_stage(uint8_t* dst, const uint8_t* src, uint32_t bytes, uint32_t bb) {
+    for (uint32_t q = threadIdx.x; q * 16 < bytes; q += blockDim.x)
+        asm volatile("cp.async.cg.shared.global [%0], [%1], 16;\n"
+                     ::"r"((unsigned) __cvta_generic_to_shared(dst + 16 * (size_t) q)), "l"(src + 16 * (size_t) q)
+                     : "memory");
+    asm volatile("cp.async.mbarrier.arrive.noinc.shared::cta.b64 [%0];\n" ::"r"(bb) : "memory");
+}
+
+// rows rows of row_bytes bytes (a multiple of 16): dst stride rs, src stride row_bytes, both bases 16-byte aligned
+__device__ __forceinline__ void dtc_stage_rows(uint8_t* dst, const uint8_t* src, int rows, uint32_t row_bytes,
+                                               uint32_t rs, uint32_t bb) {
+    const uint32_t per = row_bytes / 16;
+    for (uint32_t q = threadIdx.x; q < (uint32_t) rows * per; q += blockDim.x) {
+        const uint32_t r = q / per, k = q - r * per;
+        asm volatile("cp.async.cg.shared.global [%0], [%1], 16;\n"
+                     ::"r"((unsigned) __cvta_generic_to_shared(dst + (size_t) r * rs + 16 * k)),
+                      "l"(src + (size_t) r * row_bytes + 16 * k)
+                     : "memory");
+    }
+    asm volatile("cp.async.mbarrier.arrive.noinc.shared::cta.b64 [%0];\n" ::"r"(bb) : "memory");
+}
+
+// the consumer: try_wait is sm_90, Ada spins on test_wait
+__device__ __forceinline__ void dtc_bar_wait_ada(uint32_t bb, uint32_t par) {
+    uint32_t done = 0;
+    do {
+        asm volatile("{\n .reg .pred p;\n mbarrier.test_wait.parity.shared::cta.b64 p, [%1], %2;\n"
+                     " selp.u32 %0, 1, 0, p;\n}"
+                     : "=r"(done)
+                     : "r"(bb), "r"(par)
+                     : "memory");
+    } while (!done);
+}
+#endif
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 // block blk of nblk; smem: smem_bytes<TYPE, S, MT, KS>() bytes, 128-byte aligned
 template<int TYPE, int S, int MT, int KS>
 __device__ __forceinline__ void dense_tc_block(int blk, int nblk, uint8_t* smem, const uint8_t* __restrict__ w,
@@ -456,7 +505,7 @@ template<int TYPE, int S, int MT, int KS>
 __global__ void __launch_bounds__(MT * KS * 128) dense_tc_kernel(const uint8_t* __restrict__ w,
                                                                  const uint8_t* __restrict__ x, float* __restrict__ y,
                                                                  int n_in, int n_out, int ncols) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     extern __shared__ __align__(128) uint8_t smem[];
     dense_tc_block<TYPE, S, MT, KS>((int) blockIdx.x, (int) gridDim.x, smem, w, x, y, n_in, n_out, ncols);
 #elif defined(__CUDA_ARCH__)
@@ -468,7 +517,7 @@ __global__ void __launch_bounds__(MT * KS * 128) dense_tc_kernel(const uint8_t* 
 // copy (the first two before the grid dependency wait).  Warp w takes half super-block w % 4 of the chunks
 // w / 4, w / 4 + 2, ... in order; a row's eight warp sums are added as
 // ((w0 + w4) + (w1 + w5)) + ((w2 + w6) + (w3 + w7)).
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 // block blk of nblk (256 threads); smem: 128 + 4096 + 2 tiles of 16 rs bytes, 128-byte aligned.  rs: the staged rows'
 // stride - the row's bytes (one bulk copy per tile) or more (one per row, DEC_DTC2 & 32: one_row_stride)
 template<int TYPE>
@@ -491,6 +540,7 @@ __device__ __forceinline__ void dense_tc_tile_block(int blk, int nblk, uint8_t* 
         const int rows = min(16, n_out - tile * 16);
         const uint32_t sb = (uint32_t) __cvta_generic_to_shared(slots + (size_t) (i & 1) * ts);
         const uint32_t bb = (uint32_t) __cvta_generic_to_shared(bar + (i & 1));
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
         if (rs == row_bytes) {
             const uint32_t bytes = (uint32_t) ((rows * row_bytes + 15) & ~15);
             if (lane == 0) {
@@ -508,7 +558,17 @@ __device__ __forceinline__ void dense_tc_tile_block(int blk, int nblk, uint8_t* 
                              ::"r"(sb + (uint32_t) (lane * rs)), "l"(w + (size_t) tile * tb + (size_t) lane * row_bytes),
                              "r"((uint32_t) row_bytes), "r"(bb) : "memory");
         }
+#else
+        (void) sb;
+        if (rs == row_bytes)
+            dtc_stage(slots + (size_t) (i & 1) * ts, w + (size_t) tile * tb,
+                      (uint32_t) ((rows * row_bytes + 15) & ~15), bb);
+        else
+            dtc_stage_rows(slots + (size_t) (i & 1) * ts, w + (size_t) tile * tb, rows, (uint32_t) row_bytes,
+                           (uint32_t) rs, bb);
+#endif
     };
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
     if (wp == 0) {
         if (lane == 0) {
             for (int q = 0; q < 2; ++q)
@@ -519,6 +579,13 @@ __device__ __forceinline__ void dense_tc_tile_block(int blk, int nblk, uint8_t* 
             for (int i = 0; i < 2 && i < mine; ++i) issue(i);
     }
     __syncthreads();
+#else
+    if (tid == 0)   // Ada: every thread arrives once per issue, so the barriers count the whole block
+        for (int q = 0; q < 2; ++q)
+            asm volatile("mbarrier.init.shared::cta.b64 [%0], 256;" ::"r"((uint32_t) __cvta_generic_to_shared(bar + q)));
+    __syncthreads();   // the barriers are live in every thread's view before the first arrival
+    for (int i = 0; i < 2 && i < mine; ++i) issue(i);   // Ada: the whole block stages the first slots
+#endif
     pdl_wait();
     const uint32_t* tbl = reinterpret_cast<const uint32_t*>(dtc_iq4nl);
     uint32_t t0 = 0, t1 = 0, t2 = 0, t3 = 0;
@@ -526,12 +593,16 @@ __device__ __forceinline__ void dense_tc_tile_block(int blk, int nblk, uint8_t* 
     for (int i = 0; i < mine; ++i) {
         const int row0 = (blk + i * nblk) * 16;
         {
-            uint32_t done = 0;
             const uint32_t bb = (uint32_t) __cvta_generic_to_shared(bar + (i & 1)), par = (uint32_t) (i >> 1) & 1u;
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+            uint32_t done = 0;
             do {
                 asm volatile("{\n .reg .pred p;\n mbarrier.try_wait.parity.shared::cta.b64 p, [%1], %2;\n"
                              " selp.u32 %0, 1, 0, p;\n}" : "=r"(done) : "r"(bb), "r"(par) : "memory");
             } while (!done);
+#else
+            dtc_bar_wait_ada(bb, par);
+#endif
         }
         const uint8_t* slot = slots + (size_t) (i & 1) * ts;
         // rows past n_out read the slot's stale bytes: finite or not, they are never stored
@@ -567,10 +638,14 @@ __device__ __forceinline__ void dense_tc_tile_block(int blk, int nblk, uint8_t* 
         rw[(g + 8) * kMaxCols + 2 * t + 1] = acc[3];
         if (i == mine - 1) pdl_launch_dependents();
         __syncthreads();   // the slot is read and the warp sums are in
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
         if (wp == 0 && i + 2 < mine) {
             asm volatile("fence.proxy.async.shared::cta;" ::: "memory");
             issue(i + 2);
         }
+#else
+        if (i + 2 < mine) issue(i + 2);   // Ada: cp.async needs no async-proxy fence; the whole block stages
+#endif
         if (tid < 16 * kMaxCols) {
             const int row = tid / kMaxCols, col = tid % kMaxCols;
             if (col < ncols && row0 + row < n_out) {
@@ -590,7 +665,7 @@ template<int TYPE>
 __global__ void __launch_bounds__(256) dense_tc_tile_kernel(const uint8_t* __restrict__ w,
                                                            const uint8_t* __restrict__ x, float* __restrict__ y,
                                                            int n_in, int n_out, int ncols, int rs) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     extern __shared__ __align__(128) uint8_t smem[];
     dense_tc_tile_block<TYPE>((int) blockIdx.x, (int) gridDim.x, smem, w, x, y, n_in, n_out, ncols, rs);
 #elif defined(__CUDA_ARCH__)
@@ -602,7 +677,7 @@ __global__ void __launch_bounds__(256) dense_tc_tile_kernel(const uint8_t* __res
 // each, issued before the grid dependency wait, and NW warps share its chunks: warp w takes half super-block
 // w % 4 of the chunks w / 4, w / 4 + NW / 4, ...  A row's sums: per half super-block the warp groups in order, then
 // (hb0 + hb1) + (hb2 + hb3).
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 // tile blk; smem: one_smem_bytes<TYPE, NW>(n_in) bytes, 128-byte aligned
 template<int TYPE, int NW>
 __device__ __forceinline__ void dense_tc_one_block(int blk, uint8_t* smem, const uint8_t* __restrict__ w,
@@ -621,6 +696,7 @@ __device__ __forceinline__ void dense_tc_one_block(int blk, uint8_t* smem, const
     uint32_t* grid = reinterpret_cast<uint32_t*>(slot + max(NW * 16 * kMaxCols * 4, 16 * rs));   // IQ3_S: the codebook
     if constexpr (TYPE == 21)
         for (int i = tid; i < 512; i += NW * 32) grid[i] = iq3s_grid[i];
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
     if (tid == 0) {
         asm volatile("mbarrier.init.shared::cta.b64 [%0], 1;" ::"r"(bb));
         asm volatile("fence.mbarrier_init.release.cluster;" ::: "memory");
@@ -633,6 +709,13 @@ __device__ __forceinline__ void dense_tc_one_block(int blk, uint8_t* smem, const
         asm volatile("cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes [%0], [%1], %2, [%3];"
                      ::"r"((uint32_t) __cvta_generic_to_shared(slot + tid * rs)),
                      "l"(w + (size_t) (row0 + tid) * row_bytes), "r"((uint32_t) row_bytes), "r"(bb) : "memory");
+#else
+    if (tid == 0)   // Ada: every thread arrives once, so the barrier counts the whole block
+        asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;" ::"r"(bb), "r"((uint32_t) (NW * 32)));
+    __syncthreads();   // the barrier is live in every thread's view before the first arrival
+    // rows past n_out are not staged (and never stored); the stride spreads the rows over the banks
+    dtc_stage_rows(slot, w + (size_t) row0 * row_bytes, rows, (uint32_t) row_bytes, (uint32_t) rs, bb);
+#endif
     pdl_wait();
     const uint32_t* tbl = reinterpret_cast<const uint32_t*>(dtc_iq4nl);
     uint32_t t0 = 0, t1 = 0, t2 = 0, t3 = 0;
@@ -661,11 +744,15 @@ __device__ __forceinline__ void dense_tc_one_block(int blk, uint8_t* smem, const
     int c = wp >> 2;
     if (c < nchunk) load_x(xf, c);
     {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
         uint32_t done = 0;
         do {
             asm volatile("{\n .reg .pred p;\n mbarrier.try_wait.parity.shared::cta.b64 p, [%1], %2;\n"
                          " selp.u32 %0, 1, 0, p;\n}" : "=r"(done) : "r"(bb), "r"(0u) : "memory");
         } while (!done);
+#else
+        dtc_bar_wait_ada(bb, 0u);
+#endif
     }
     pdl_launch_dependents();
     // rows past n_out read the slot's stale bytes: finite or not, they are never stored
@@ -709,7 +796,7 @@ template<int TYPE, int NW>
 __global__ void __launch_bounds__(NW * 32) dense_tc_one_kernel(const uint8_t* __restrict__ w,
                                                               const uint8_t* __restrict__ x, float* __restrict__ y,
                                                               int n_in, int n_out, int ncols) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     extern __shared__ __align__(128) uint8_t smem[];
     dense_tc_one_block<TYPE, NW>((int) blockIdx.x, smem, w, x, y, n_in, n_out, ncols);
 #elif defined(__CUDA_ARCH__)
@@ -742,7 +829,7 @@ __host__ __device__ constexpr int pair_sb(int type) {
     if constexpr (LQ) return sb_bytes_lq(type);
     else return sb_bytes(type);
 }
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 template<int TYPE>
 __device__ __forceinline__ void pair_terms(float (&acc)[4], const uint8_t* rowA, const uint8_t* rowB, int wp, int hb,
                                            int n, int g, int t, const uint8_t* __restrict__ x, int nb32, int nchunk,
@@ -853,16 +940,30 @@ __device__ __forceinline__ void dense_tc_pair_block(int blk, int nblk, uint8_t* 
         const uint32_t bytes = (uint32_t) ((rows * row_bytes + 15) & ~15);
         const uint32_t sb = (uint32_t) __cvta_generic_to_shared(slots + (size_t) (i & 1) * slot_bytes);
         const uint32_t bb = (uint32_t) __cvta_generic_to_shared(bar + (i & 1));
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
         asm volatile("mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;" ::"r"(bb), "r"(bytes) : "memory");
         asm volatile("cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes [%0], [%1], %2, [%3];"
                      ::"r"(sb), "l"(m.w + (size_t) lt * 16 * row_bytes), "r"(bytes), "r"(bb) : "memory");
+#else
+        (void) sb;
+        dtc_stage(slots + (size_t) (i & 1) * slot_bytes, m.w + (size_t) lt * 16 * row_bytes, bytes, bb);
+#endif
     };
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
     if (tid == 0) {
         for (int q = 0; q < 2; ++q)
             asm volatile("mbarrier.init.shared::cta.b64 [%0], 1;" ::"r"((uint32_t) __cvta_generic_to_shared(bar + q)));
         asm volatile("fence.mbarrier_init.release.cluster;" ::: "memory");
             for (int i = 0; i < 2 && i < mine; ++i) issue(i);
     }
+#else
+    if (tid == 0)
+        for (int q = 0; q < 2; ++q)
+            asm volatile("mbarrier.init.shared::cta.b64 [%0], 256;"
+                         ::"r"((uint32_t) __cvta_generic_to_shared(bar + q)));
+    __syncthreads();   // the barriers are initialized before any thread arrives on them
+    for (int i = 0; i < 2 && i < mine; ++i) issue(i);
+#endif
     __syncthreads();
     pdl_wait();
     XFrag xs[3];
@@ -878,12 +979,16 @@ __device__ __forceinline__ void dense_tc_pair_block(int blk, int nblk, uint8_t* 
         const int row0 = (second ? tile - nt0 : tile) * 16;
         const int row_bytes = (n_in / 256) * pair_sb<LQ>(m.type);
         {
-            uint32_t done = 0;
             const uint32_t bb = (uint32_t) __cvta_generic_to_shared(bar + (i & 1)), par = (uint32_t) (i >> 1) & 1u;
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+            uint32_t done = 0;
             do {
                 asm volatile("{\n .reg .pred p;\n mbarrier.try_wait.parity.shared::cta.b64 p, [%1], %2;\n"
                              " selp.u32 %0, 1, 0, p;\n}" : "=r"(done) : "r"(bb), "r"(par) : "memory");
             } while (!done);
+#else
+            dtc_bar_wait_ada(bb, par);
+#endif
         }
         const uint8_t* slot = slots + (size_t) (i & 1) * slot_bytes;
         const uint8_t* rowA = slot + g * row_bytes;
@@ -936,10 +1041,14 @@ __device__ __forceinline__ void dense_tc_pair_block(int blk, int nblk, uint8_t* 
         rw[(g + 8) * kMaxCols + 2 * t + 1] = acc[3];
         if (i == mine - 1) pdl_launch_dependents();
         __syncthreads();   // the slot is read and the warp sums are in
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
         if (tid == 0 && i + 2 < mine) {
             asm volatile("fence.proxy.async.shared::cta;" ::: "memory");
             issue(i + 2);
         }
+#else
+        if (i + 2 < mine) issue(i + 2);
+#endif
         if (tid < 16 * kMaxCols) {
             const int row = tid / kMaxCols, col = tid % kMaxCols;
             if (col < ncols && row0 + row < m.n_out) {
@@ -958,7 +1067,7 @@ __device__ __forceinline__ void dense_tc_pair_block(int blk, int nblk, uint8_t* 
 template<bool XR, bool DB, bool LQ>
 __global__ void __launch_bounds__(256) dense_tc_pair_kernel(PairMat m0, PairMat m1, const uint8_t* __restrict__ x,
                                                             int n_in, int ncols) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     extern __shared__ __align__(128) uint8_t smem[];
     dense_tc_pair_block<XR, DB, LQ>((int) blockIdx.x, (int) gridDim.x, smem, m0, m1, x, n_in, ncols);
 #elif defined(__CUDA_ARCH__)
@@ -978,6 +1087,14 @@ __global__ void __launch_bounds__(32) dense_tc_l2_kernel(const uint8_t* __restri
             asm volatile("cp.async.bulk.prefetch.L2.global [%0], %1;" ::"l"(w + o), "r"(sz) : "memory");
         }
     }
+    pdl_launch_dependents();
+    pdl_wait();
+#elif defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+    // Ada has no bulk prefetch: 128-byte L2 lines, the grid's share spread over the block's threads
+    const size_t nl2 = (bytes + 127) / 128, lo = (size_t) blockIdx.x * nl2 / gridDim.x,
+                 hi = (size_t) (blockIdx.x + 1) * nl2 / gridDim.x;
+    for (size_t l = lo + threadIdx.x; l < hi; l += blockDim.x)
+        asm volatile("prefetch.global.L2 [%0];" ::"l"(w + (l << 7)) : "memory");
     pdl_launch_dependents();
     pdl_wait();
 #endif

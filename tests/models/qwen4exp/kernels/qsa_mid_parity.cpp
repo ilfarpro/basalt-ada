@@ -212,8 +212,8 @@ int main(int argc, char** argv) {
     }
     cudaDeviceProp pr;
     cudaGetDeviceProperties(&pr, 0);
-    if (pr.major < 9) {
-        std::printf("qsa_mid_parity: needs compute capability 9.0+\n");
+    if (pr.major < 8) {
+        std::printf("qsa_mid_parity: needs compute capability 8.0+\n");
         return 77;
     }
     cudaStream_t s;
