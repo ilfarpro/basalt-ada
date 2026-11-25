@@ -28,10 +28,12 @@ nvcc, DDR5 188 GiB host. The second card (RTX 5060 Ti) runs a serve and is never
 | 2026-11-26 | 93045a4b | 37.1 / 52.6 / 38.0 | 48.3 | 2675 / 2947 | baseline; accept 70.9/98.1/67.7%, draft len 1.7/6.9/1.6; ~231 W of 320 drawn at ~2600 MHz SM while decoding |
 
 Flagged: the same build at the warm A/B harness measured 57.5 / 90.6 / 61.2 tok/s for the three
-fixtures - the preset's own cold numbers sit 35-53% below. The preset starts each fixture from a
-process on an idle GPU (210 MHz idle clocks, graphs uncaptured, the profile prefill of 9.5 GB into
-the cache); the suspected cause is the clock ramp and graph capture inside a ~25 s measurement.
-Series entries stay comparable to each other; do not compare them to the warm harness row.
+fixtures - the preset's own cold numbers sit 35-53% below. Two suspects, both unproven: the preset
+starts each fixture on an idle GPU (210 MHz idle clocks, graphs uncaptured) inside a ~25 s cold
+measurement, and the serve on the other card runs real traffic in bursts that steal ~7 cores for
+minutes at a time. Measurements of this session are now guarded: the serve's CPU-seconds per run
+are recorded next to every arm and a bursty arm is discarded. Series entries stay comparable to
+each other; do not compare them to the warm harness row.
 
 Manual reference at `93045a4b` (hand run): story generation **52 tok/s decode**, 91k prompt
 **3700 tok/s prefill**. A 32-token cold `generate` at the same commit: 27.6-27.8 tok/s decode,
@@ -64,12 +66,13 @@ of experts in RAM and spins ~10 cores (986% CPU) - my bench pins another 67.6 Gi
 runs in the same conditions, so the comparison holds.
 
 - Expert traffic, conv fixture: ~597 expert lookups per generated token, cache hit 62.9% at
-  3040 VRAM slots of 24576, the average blob 2.9 MB: about 640 MB of RAM reads per token. At the
-  measured 57.5 tok/s this is ~37 GB/s for one engine; the harness's RAM read rate measures
-  49.6-56.6 GB/s at DDR5-4000. One engine is at 65-75% of the ceiling, and the serve's pool wants
-  its share on top: the channels are effectively saturated.
-- The CPU expert pool scales +21% from 8 to 19 workers on conv, then only +2% from 19 to 24 with
-  cores left idle - the classic memory-bound flattening, not a compute one.
+  3040 VRAM slots of 24576, the average blob 2.9 MB; the dispatcher computes a window's distinct
+  experts once, so ~460-640 MB of RAM reads per token. At the measured 57.5 tok/s that is 26-37
+  GB/s for one engine; the harness's RAM read rate measures 49.6-56.6 GB/s at DDR5-4000 - 50-75%
+  of the ceiling with the serve's pool wanting its share on top.
+- The CPU expert pool scales +21% from 8 to 19 workers on conv, then only +2% from 19 to 24;
+  28 workers (exactly the hardware-thread count) collapsed to 28.8 tok/s - SMT siblings thrash the
+  L1/L2 the AVX-2 kernels stream through. The pool is near its ceiling; more cores do not help.
 - The user's own experiment agrees from the other side: DDR5-4000 to 5600 gave +17% decode
   (63.3 -> 74) with prefill flat (2638 -> 2663) on the 5060 Ti.
 
@@ -101,6 +104,16 @@ run on this card; with the gate lowered past `sms >= 128` for the measurement:
 
 **Verdict: the `sms >= 128` term is right for this card too, confirmed at 80 SMs - no change.**
 
-## Optimization: expert cache and pool sizing on the 4080 (measuring)
+## Knobs measured and rejected (2026-11-26)
 
-_measuring: pool workers 28/32, expert cache beyond the auto 3040 slots_
+- **Expert cache beyond the auto 3040 slots**: `--expert-cache 3179` is what actually fits on this
+  card (auto sits at 96% of that). Paired arms: hit 63.3/62.9% vs 62.5/64.8%, windows 40.0/43.2 vs
+  35.1/42.9 ms - inside each other's spread, and 4.6% more slots cannot move a 37% miss rate. Dead.
+- **Pool workers**: auto 19 is right; 24 buys ~2% (noise-grade), 8 loses 19%, 28 (the thread count)
+  collapses to 28.8 tok/s on SMT thrash. Do not ship a bigger default for hybrid CPUs on evidence
+  this thin, and do not let users set the thread count as a "tune".
+- **Spec depth**: `--spec` floors at 6, and the pack's drafter drafts 6.9 tokens on struct -
+  depth 6 costs struct 12-23% (draft_len caps at 3.0) while conv gains nothing. Default 8 stands.
+- **`qsa_qproj_half`**: closed above. **PCIe share**: `pcie_frac` is not a Blackwell constant, it is
+  computed at start from the probed link (0.55 x min(1, GB/s / 20); this card: 17.3 -> 0.50) -
+  already Ada-adaptive, nothing to retune.
