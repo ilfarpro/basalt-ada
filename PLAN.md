@@ -106,9 +106,15 @@ is reworked, not shipped.
       its state (a bitwise DIFF only under load); it waits now. `expert_cache_segmented_test` and
       `kv_arena_test` measure the device's free VRAM, a total a GPU test running beside them moves mid-check:
       they run serially now, and their readings retry inside a short grace as signed deltas.
-- [ ] Re-measure the card's gates for Ada's SM count: the QSA paths ship gated at `sms >= 128`
+- [x] Re-measure the card's gates for Ada's SM count: the QSA paths ship gated at `sms >= 128`
       (a 4090), and a 4080-class card has 80 SMs; re-tune or re-gate from measurements, not by
-      lowering the number.
+      lowering the number.  Done (docs/ada-optimizations.md): `hc_fused`/`mid_chain` are not SM-gated
+      but architecture-gated (TMA bodies, `major == 12`), unreachable by retune; `qsa_qproj_half`'s
+      gate is the one live SM term and was measured with it lowered - bitwise on the Ada branch,
+      and zero at the window on the path's only live configuration (int8 KV), the halves being 19%
+      slower per byte at kernel level on 110 blocks of an 80-SM card.  The `sms >= 128` term stands,
+      validated by measurement.  The decode pool, expert cache and spec-depth knobs were measured
+      too: all at their ceilings on this machine, which is RAM-bandwidth-bound for decode.
 - [x] First milestone: a UD-Q4_K_XL Flash-Next pack runs end to end on a 4080-class card.
       (Done on a 4080 SUPER: prefill 39 tok/s, decode 27.8 tok/s over 32 tokens with spec/MTP; the card's
       expert cache needs a --expert-cache margin for the window graphs - the auto fill left none, and the
