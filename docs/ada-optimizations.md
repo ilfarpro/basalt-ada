@@ -31,15 +31,19 @@ nvcc, DDR5 188 GiB host. The second card (RTX 5060 Ti) runs a serve and is never
   the sm_89 build at 11ef05b9).
 - **Manual reference (the user's runs):** a story-about-the-moon generation, and a 91k-token
   prompt prefill.
-- **Moon reproduction (corrected 06:30):** the one-shot form is `bin/basalt --model <pack>
-  --tokens "<ids>" --max-new 800 --kv int8 --vram-reserve-mib 128` (there is no `generate`
-  subcommand to pass positionally before the flags - `basalt generate ...` is refused as
-  `unknown argument: generate`). moon_ids.txt = the tokens of
-  `"Write a short story about the moon."` wrapped in the pack's chat template (16 tokens,
-  encoded with the repo's own `tools/tokenizer.py`). The one-shot path needs a low cache cap
-  to leave graph headroom (see the knife-edge section: `--expert-cache 1200` -> 86.30 tok/s);
+- **Moon reproduction (corrected 06:30, corrected again 07:15):** the one-shot form is
+  `bin/basalt --model <pack> --tokens "<ids>" --max-new 800 --kv int8 --vram-reserve-mib 128`
+  (there is no `generate` subcommand to pass positionally before the flags - `basalt generate
+  ...` is refused as `unknown argument: generate`). moon_ids = the tokens of
+  `"Write a short story about the moon."` wrapped in the pack's chat template (16 tokens:
+  `248045,846,198,7734,264,2716,3255,883,279,17257,13,248046,198,248045,74455,198`, encoded
+  with the repo's own `tools/tokenizer.py`). The one-shot path needs a low cache cap
+  to leave graph headroom (see the knife-edge section: `--expert-cache 1200`); with the
+  chat-template ids it decodes 800 moon tokens at **45.3 tok/s** (accept 67.5%, 1.83 tokens
+  per round - an earlier 86.3 figure came from a raw-ids prompt and is retracted below);
   the user-like serve path (a second serve on GPU 0, ctx 16384, one chat call with
-  `max_tokens: 800`) measured 41.8 tok/s end-to-end cold, 66.0 hot - the user's hand figure of
+  `max_tokens: 800`) measured 41.8 tok/s end-to-end cold, 66.0 hot (the engine's own tg lines:
+  51.3 cold / 66.2 hot, hit 64.5-72.4%) - the user's hand figure of
   52 tok/s sits between (their serve: ctx 200k elastic under live traffic). Texts differ run
   to run (temperature 0.7); the row compares build to build, not the story.
 
@@ -150,20 +154,32 @@ path brittle: the auto-sizer reserves for "what loads after" but not for the gra
 (asked 1200 -> 1529 actual, asked 3000 -> 3371; the serve path's cap is exact - 3179 -> 3179
 verified) - so caps of 2600-3100 still starved the graphs and looked like lost VRAM. With a
 cap low enough to leave graph headroom (`--expert-cache 1200`) the run completes and
-story-about-the-moon decodes **800 tokens at 86.30 tok/s** (default small ctx, KV 0.4 GiB,
-1529 cache slots; TTFT 16.9 s is init, excluded). The serve path never hits the knife-edge
-(elastic KV yields cells to the cache and back): measured 41.8 cold / 66.0 hot tok/s
-end-to-end at ctx 16384 with the same pack and build.
+story-about-the-moon decodes (default small ctx; TTFT excludes init). The serve path never
+hits the knife-edge (elastic KV yields cells to the cache and back): measured 41.8 cold /
+66.0 hot tok/s end-to-end at ctx 16384 with the same pack and build.
 
-The 86.3 is the find of the hour: this story's routing working set (~1231 distinct experts on
-the prompt path plus a few hundred as the text unfolds) **fits inside the 1529-slot cache**, so
-decode streams almost nothing from RAM. The harness fixtures (mixed routing, accept ~69-98%)
-and the user's ctx-200k serve (elastic KV eats slots, live traffic re-shapes the cache between
-requests) sit at 52-66. Follow-up worth trying on the user's serve at the next restart (cheap,
-quality-neutral - cache residency only, measure before/after with the harness): it runs
-`--expert-cache auto` at ctx 200k with kv-resident 32768; if a typical request is well under
-100k tokens, a smaller `--max-context` (or kv-resident) returns slots to the expert cache, and
-a conversation's working set may start fitting VRAM - which is where the 80s live.
+The 86.30 read from that path is **retracted** (07:15). That run passed a raw 16-token id list
+(`1207,318,8261,...` - a pre-tokenization from a foreign vocab, no chat template), and what it
+generated drafted at **99.8% accept, 2.92 tokens per round** - the real chat-template moon
+prompt runs 59-73% accept, 1.7-2.1 tokens per round. The same one-shot with the chat-template
+ids and the same 1200 cap decodes the 800-token story at **45.32 tok/s**, right in the serve
+path's cold-to-hot band. The "working set fits the cache" reading was wrong twice over: that
+run swapped 3909 experts into the tier mid-decode (constant churn, no fit), and 1529 cache
+slots did not make it faster than the serve's 2939. What the numbers say instead: the verify
+round rate is near-constant at 25-34 rounds/s across one-shot and serve, 1529 and 2939 slots,
+ctx 16k and 200k - and decode tok/s = round rate x tokens per round, so the 45-86 spread
+between moon runs is draft acceptance (text difficulty), not the cache. Comparing moon rows
+means quoting accept and tokens-per-round next to tok/s.
+
+The serve slot-trade follow-up (smaller `--max-context` or kv-resident returns slots to the
+expert cache) is **measured, and it is not a lever** (07:04, serve on GPU 0, quiet window,
+0 serve CPU-s): KV is elastic - the ctx-204800 serve holds it in 0.7/3.1 GiB of cuda0 and gets
+the same **2939-slot** cache as the ctx-16384 one (cuda0 14.0 vs 14.3 GiB); hot moon tg is
+66.1 vs 66.2 tok/s, hit 68.9 vs 72.4%. Context trades nothing. The user's 52 tok/s sits inside
+this regime (accept ~59-73%, conversations cold-to-warm); the engine-side lever for moon
+remains the round rate itself - RAM bandwidth (the DDR5 verdict) and CPU-pool speed - not
+slot counts.
+
 ## Basalt vs Strata on the same card and pack (blocked on RAM, found 05:31)
 
 Strata 0.2.21.1 is installed with the same pack (`Qwen3.8-Flash-Next-UD-Q4_K_XL`, GGUF shards).
