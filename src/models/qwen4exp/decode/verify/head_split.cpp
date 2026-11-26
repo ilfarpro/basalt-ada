@@ -3,6 +3,7 @@
 #include "basalt/models/qwen4exp/decode/verify.hpp"
 #include "basalt/models/qwen4exp/decode/native_head.hpp"
 #include "basalt/core/on_device.hpp"
+#include "basalt/core/card_model_kernels.hpp"
 #include "basalt/models/qwen4exp/kernels/cvec.hpp"
 #include "basalt/kernels/native_mmvq.hpp"
 #include "basalt/kernels/pdl.hpp"
@@ -23,6 +24,9 @@ using namespace verify_detail;
 // does not pay for its two hand-offs, so it is taken only when the peer's share is large.
 // CUDA0's rows of the head split by vocabulary (0: no split), from the cards' bandwidths.
 static int hs_plan(size_t rb, int type, int V, int N, int T, int dev0, int dev1) {
+    // the peer's rows are head kernels on its card: a peer card of another capability runs only the peer
+    // tier's kernels, so the head stays whole on the main card
+    if (!basalt::core::card_runs_model_kernels(dev1)) return 0;
     if (type == 13 ? !basalt::kernels::q5k_head_supported(N, T) : type == 14) return 0;
     const double bw0 = card_bandwidth(dev0), bw1 = card_bandwidth(dev1);
     if (bw0 <= 0.0 || bw1 <= 0.0 || rb == 0) return 0;
@@ -38,6 +42,7 @@ static int hs_plan(size_t rb, int type, int V, int N, int T, int dev0, int dev1)
 // peer's share also pays its input's and its list's trips over the host, so it takes a little less than its bandwidth's
 // share.  CUDA0's rows (0: no split).
 static int hs_plan_two(int V, int dev0, int dev1) {
+    if (!basalt::core::card_runs_model_kernels(dev1)) return 0;   // the peer's screen runs on its card
     const double bw0 = card_bandwidth(dev0), bw1 = card_bandwidth(dev1);
     if (bw0 <= 0.0 || bw1 <= 0.0 || bw1 >= bw0) return 0;
     constexpr double screen_row = 2080.0, hand_off = 20e-6;   // the bytes a row's screen reads; the trips and the list

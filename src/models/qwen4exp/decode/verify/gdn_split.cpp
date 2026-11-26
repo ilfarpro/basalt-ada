@@ -7,6 +7,7 @@
 #include "basalt/models/qwen4exp/decode/native_head.hpp"
 #include "basalt/models/qwen4exp/decode/gdn_head_split.hpp"
 #include "basalt/core/on_device.hpp"
+#include "basalt/core/card_model_kernels.hpp"
 #include "basalt/core/peer_experts.hpp"
 #include "basalt/kernels/gdn_window.hpp"
 #include "basalt/kernels/native_mmvq.hpp"
@@ -34,6 +35,9 @@ using namespace verify_detail;
 static bool g_gs_off = false;   // set by Verifier::gs_decide when the split does not pay
 
 static int gs_plan_bw(const ModelGeometry& g, int dev0, int dev1) {
+    // the split's heads are GDN kernels on the peer card: a peer card of another capability runs only the
+    // peer tier's kernels, so the mixer stays whole on the main card
+    if (!basalt::core::card_runs_model_kernels(dev1)) return 0;
     const int HK = (int) g.ssm_k_heads, HV = (int) g.ssm_v_heads, S = (int) g.ssm_state_size, HIST = (int) g.ssm_d_conv - 1;
     const int64_t N = g.n_embd, C = g.ssm_conv_channels, ZV = g.ssm_value_dim;
     constexpr int kBlockCols = 256;

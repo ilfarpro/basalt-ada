@@ -3,6 +3,7 @@
 #include "context.hpp"
 
 #include "basalt/artifact/dequant.hpp"
+#include "basalt/core/card_model_kernels.hpp"
 #include "basalt/core/model_file.hpp"
 #include "basalt/kernels/bf16_bits.hpp"
 #include "basalt/models/qwen4exp/kernels/cvec.hpp"
@@ -29,6 +30,12 @@ int split_plan(Context& context) {
                         : !o.resident_cpu_experts ? "no RAM copy of the experts" : nullptr;
         if (off == nullptr && main_link_gbps <= 0) main_link_gbps = basalt::core::probe_h2d_gbps();   // (a set --pcie-frac skips it)
         for (size_t j = o.peer_devices.size(); off == nullptr && j-- > 0;) {
+            // the stage reads whole model layers on its card, which runs the model's own kernels there; a peer
+            // card of another capability runs only the peer tier's kernels, so the split declines it
+            if (!basalt::core::card_runs_model_kernels(o.peer_devices[j])) {
+                off = "model layers on a peer card of another compute capability";
+                break;
+            }
             auto st = std::make_unique<PromptStage>();
             st->dev = o.peer_devices[j];
             st->tier_at = j;

@@ -175,6 +175,17 @@ new kernel bodies and no kernel source changed.
       before any speed claim. This machine's peer slot is electrically PCIe 4.0 x4 (~6.5-7 GB/s):
       it moves the expert load at start and any row crossing, not the steady-state decode math,
       which keeps expert rows on the card that holds them.
+      First serve start caught a cross-capability e2e bug the unit tests missed: with a peer card
+      the engine auto-enables the prompt split (whole layers on the peer), the verifier head split,
+      and the GDN mixer split, all of which run the *model's own* kernels (attention, dense GEMM,
+      `q80p_vhead`) on that card - compiled only for the main capability, so the peer card threw them
+      into the PTX JIT. A cross-capability peer build compiles only the peer *tier*'s kernels for the
+      peer card, not the model's layers, so the peer card is the expert tier and nothing else. Fixed:
+      `core::card_runs_model_kernels(dev)` (the device's capability is the build's) now gates the
+      three planners - the prompt split (`split_plan`), the head split (`hs_plan`, `hs_plan_two`)
+      and the mixer split (`gs_plan_bw`) - so a cross-capability peer is used only for expert MMQ.
+      Rerun the serve start in a serve-stopped window: the three splits must decline, the peer tier
+      (experts rows, prompt-chunk rows) must stay, then measure decode and prefill.
 
 ## Later Ada work (out of the scope above)
 
