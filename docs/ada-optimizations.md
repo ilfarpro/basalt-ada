@@ -22,12 +22,20 @@ nvcc, DDR5 188 GiB host. The second card (RTX 5060 Ti) runs a serve and is never
   QSA prelude; the fp16 default runs a different engine and is not comparable.
 - **Manual reference (the user's runs):** a story-about-the-moon generation, and a 91k-token
   prompt prefill.
-- **Moon reproduction (mine, for cross-session comparison):**
-  `bin/basalt generate --model <pack> --tokens-file moon_ids.txt --max-new 800 --kv int8
-  --vram-reserve-mib 128` from a cold process, moon_ids.txt = the tokens of
+- **Moon reproduction (corrected 06:30):** the one-shot form is `bin/basalt --model <pack>
+  --tokens "<ids>" --max-new 800 --kv int8 --vram-reserve-mib 128` (there is no `generate`
+  subcommand to pass positionally before the flags - `basalt generate ...` is refused as
+  `unknown argument: generate`). moon_ids.txt = the tokens of
   `"Write a short story about the moon."` wrapped in the pack's chat template (16 tokens,
-  encoded with the repo's own `tools/tokenizer.py`). The user's hand prompt is not this exact
-  text; the row compares build to build, not to the 52 tok/s figure token-for-token.
+  encoded with the repo's own `tools/tokenizer.py`). As of tonight the one-shot path no longer
+  fits VRAM on this machine at any cap down to 2600 slots (see the OOM anomaly below), so the
+  practical reproduction is the user-like serve path: a second serve on GPU 0
+  (`bin/basalt serve <pack> --python <venv> --port 18081 --kv int8 --vram-reserve-mib 128
+  --max-context 16384`), then one `/v1/chat/completions` call with the prompt and
+  `max_tokens: 800`. First request after load measured 41.8 tok/s end-to-end (184 tokens in
+  4.4 s), the hot repeat 66.0 tok/s (323 tokens in 4.9 s, prompt-cached): the user's hand
+  figure of 52 tok/s sits between them (their serve is ctx 200k elastic under live traffic).
+  Texts differ run to run (temperature 0.7); the row compares build to build, not the story.
 
 | date | HEAD | decode conv/struct/prose (tok/s) | decode weighted | prefill 16k / 64k (tok/s) | notes |
 |---|---|---|---|---|---|
@@ -121,6 +129,25 @@ The last PLAN bar item measured on the 4080 SUPER, all bitwise:
   compute of 7 groups is 22.7-25.4 us.
 
 Nothing sits between these kernels and their limits: closed.
+
+## Anomaly (flagged, unresolved): one-shot generation lost ~1-3 GiB of usable VRAM headroom
+
+Same binary (02:06 build, unchanged source since), same command that ran clean at 01:1x
+(`--tokens ... --max-new 32 --kv int8 --vram-reserve-mib 128`), at 06:12 it fails at
+`verify: instantiate: out of memory` and even at `--expert-cache 2600` the 106 MiB verify
+arena "does not fit". The auto-sizer reports "9.94 GiB free" and fills the cache to the brim
+(3283 slots, 9.55 GiB; the same one-shot command completed cleanly at 01:1x on this build),
+and every cap
+down to 2600 still starves the last buffers - so the missing ~1-3 GiB is gone before the
+engine's own allocations, invisibly: `nvidia-smi` shows 1 MiB used and 16376 total at idle,
+"Reserved 350 MiB", no Xid, no throttle reasons, no compute apps, driver 615.71.09 unchanged
+(this box has run one-shot e2e at this size for days). The serve path on the same GPU is
+unaffected (it loads 14.3 GiB weights+cache + 0.4 KV and decodes fine, measured 66 tok/s hot).
+Most likely a driver-side state accumulated across the night's load/unload cycles (or the
+506 Ti serve's 15 h); a reboot of the box will tell, and if it returns after reboot this is a
+real leak to chase. Benchmarks of the serve path (everything in this doc) are unaffected;
+one-shot numbers after this point in the night must state their cache cap. Workaround used for
+the moon reference above: measure through a serve, like the user does.
 
 ## Basalt vs Strata on the same card and pack (blocked on RAM, found 05:31)
 
