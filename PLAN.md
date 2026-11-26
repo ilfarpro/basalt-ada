@@ -160,11 +160,17 @@ new kernel bodies and no kernel source changed.
       `docs/configuration/gpus.md` (both directions, speeds not ages); `docs/platforms.md`
       names both flags.
 - [ ] Two-card GPU verification on the 4080 SUPER + 5060 Ti pair, in a serve-stopped window (the
-      main card is fully held while the serve runs): `CUDA_VISIBLE_DEVICES=0,1 ctest -R
-      "dec_moe_parity_kq|peer_share_parity|expert_tier_test|ds41_peer_parity|host_registration_test"`.
-      `dec_moe_parity`'s window checks are the cross-card bitwise gate (the peer kernel against
-      `native_expert_grouped`, both running on the Blackwell card); `peer_share_parity` checks a
-      prompt chunk's peer MMQ share against the main card's MMQ and a double CPU reference.
+      main card is fully held while the serve runs). First run: `dec_moe_parity`'s cross-card
+      bitwise gate (the peer kernel against `native_expert_grouped`, both on the Blackwell card),
+      `expert_tier_test`, `ds41_peer_parity` and `host_registration_test` passed. `peer_share_parity`
+      and three suite tests that replay main-card kernels on the second card (`prompt_split_state_test`,
+      `gdn_chunk_parity`, `cvec_parity`) failed on the PTX JIT fallback - a card that runs none of
+      this build's kernels had the test's own kernels thrown at it (and the driver is one CUDA minor
+      older than the toolkit, which rejects its PTX). Fixed: `peer_share_parity`'s file gets the peer's
+      SASS under a cross-capability peer flag (its swiglu genuinely runs on the peer), the other three
+      skip a device of another capability, the `window_gemm_two_gpu` rule. Rerun in the next window:
+      `CUDA_VISIBLE_DEVICES=0,1 ctest -R "dec_moe_parity_kq|peer_share_parity|expert_tier_test|
+      ds41_peer_parity|host_registration_test|prompt_split_state_test|gdn_chunk_parity|cvec_parity"`.
 - [ ] End to end: `--gpu 0,1 --gpu-mode peer` on the UD-Q4_K_XL pack, decode and prefill against
       the one-card baseline (67 / 4068 tok/s at DDR5-5600), recorded in `docs/ada-optimizations.md`
       before any speed claim. This machine's peer slot is electrically PCIe 4.0 x4 (~6.5-7 GB/s):

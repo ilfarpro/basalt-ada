@@ -926,8 +926,18 @@ int main(int argc, char** argv) {
         int rc = parity(s);
         if (do_bench) bench(s);
         cudaStreamDestroy(s);
-        // the GEMM launch's shared-memory opt-in is per device: every other device must run it too
+        // the GEMM launch's shared-memory opt-in is per device: every other device must run it too;
+        // a device of another capability runs none of this build's kernels (that card is a cross-capability
+        // peer, where only the peer kernels run), so it is skipped, not failed
         for (int d = 1; d < ndev && rc == 0; ++d) {
+            int cc_major = 0, cc_minor = 0;
+            cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, d);
+            cudaDeviceGetAttribute(&cc_minor, cudaDevAttrComputeCapabilityMinor, d);
+            if (!basalt::core::cuda_cc_is_ours(cc_major, cc_minor)) {
+                std::printf("device %d is sm_%d%d, this build's kernels are sm_%d; skipped\n", d, cc_major, cc_minor,
+                            basalt::core::kCudaCC);
+                continue;
+            }
             ck(cudaSetDevice(d), "set device");
             std::printf("device %d\n", d);
             cudaStream_t s2;

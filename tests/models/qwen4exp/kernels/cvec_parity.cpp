@@ -6,6 +6,7 @@
 //   4. a layer without a direction is untouched.
 
 #include "basalt/models/qwen4exp/kernels/cvec.hpp"
+#include "basalt/core/cuda_cc.hpp"
 #include "basalt/models/qwen4exp/kernels/fused_gr.hpp"
 
 #include <cuda_runtime.h>
@@ -219,7 +220,8 @@ int main() {
     }
 
     // ---- 5. a prompt split's stage on another card: cvec_replicate puts the tables there, and the per-request switch
-    // reaches that card too
+    // reaches that card too; the split stages on cards of this build's capability - a device of another one
+    // (a cross-capability peer) runs none of these kernels and is skipped, not failed
     int devices = 0;
     ck(cudaGetDeviceCount(&devices), "device count");
     std::printf("replicate\n");
@@ -227,6 +229,14 @@ int main() {
         std::printf("  one device, skipped\n");
     } else {
         for (int d = 1; d < devices; ++d) {
+            int cc_major = 0, cc_minor = 0;
+            cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, d);
+            cudaDeviceGetAttribute(&cc_minor, cudaDevAttrComputeCapabilityMinor, d);
+            if (!basalt::core::cuda_cc_is_ours(cc_major, cc_minor)) {
+                std::printf("  device %d is sm_%d%d, this build's kernels are sm_%d; skipped\n", d, cc_major, cc_minor,
+                            basalt::core::kCudaCC);
+                continue;
+            }
             ck(cudaSetDevice(d), "set the stage's device");
             if (!k::cvec_replicate(err)) {
                 std::fprintf(stderr, "cvec_replicate: %s\n", err.c_str());
