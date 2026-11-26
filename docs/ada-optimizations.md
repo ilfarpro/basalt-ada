@@ -20,6 +20,15 @@ nvcc, DDR5 188 GiB host. The second card (RTX 5060 Ti) runs a serve and is never
   a fixed sampling seed so both arms sample the same text; judged on ms per decode window, not
   tok/s. int8 KV because that is what the serve runs and what arms the decode path with the fused
   QSA prelude; the fp16 default runs a different engine and is not comparable.
+- **ctest hygiene (06:55):** on this PC `ctest` must run with `CUDA_VISIBLE_DEVICES=0`. A
+  CVD-less run fails 9 tests (gdn_chunk_parity, prompt_split_state_test, dec_moe_parity_kq,
+  cvec_parity, host_registration_test, window_gemm_two_gpu, expert_tier_test, ds41_peer_parity,
+  peer_share_parity) environmentally - they touch the other card or two-device paths and fight
+  the live serve. Under CVD=0 the full suite lands **230/231 (99%)**: the only failure is
+  `platform_cpu_test` (pre-existing, unrelated to this work) and the two-GPU tests
+  (`window_gemm_two_gpu`, `peer_share_parity`) skip correctly on a single visible card
+  (full-suite run 06:52, log `/tmp/ctest_final_cvd.log`, test tree `/tmp/build-89c` matching
+  the sm_89 build at 11ef05b9).
 - **Manual reference (the user's runs):** a story-about-the-moon generation, and a 91k-token
   prompt prefill.
 - **Moon reproduction (corrected 06:30):** the one-shot form is `bin/basalt --model <pack>
