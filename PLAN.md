@@ -130,7 +130,10 @@ is reworked, not shipped.
       Russian moon story, default sampling, rates read over long generations - 800 tokens is
       too short to see the ceiling): **55 tok/s decode (52 on the 93045a4b-era build)** with
       the 91k-prompt prefill unchanged at **~3700 tok/s** - accepted as the interim Ada-main
-      result. The Basalt-vs-Strata face-off on this card is **dropped by the owner
+      result. The owner then swapped the host to DDR5-5600 and re-ran the same build the same
+      way: **decode 67, prefill 4068** (+21.8% / +9.1%) - the RAM-bandwidth read-out, in
+      `docs/ada-optimizations.md`; the harness series (at 4000) is due a re-run on the new
+      speed. The Basalt-vs-Strata face-off on this card is **dropped by the owner
       (2026-11-26 07:49)**: the two engines' ~72 GiB pinned complements cannot coexist in this
       RAM (systemd-oomd kills the second loader; the measured record stands in
       `docs/ada-optimizations.md`) and a serve-stopped window was declined. Not to be restaged.

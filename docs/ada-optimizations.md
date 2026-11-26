@@ -7,7 +7,13 @@ before/after here; a claimed win without a row here did not happen.
 ## The machine
 
 GeForce RTX 4080 SUPER, 80 SMs, 16 GiB, power limit 320 W (stock), driver 615.71.09, CUDA 12.x
-nvcc, DDR5 188 GiB host. The second card (RTX 5060 Ti) runs a serve and is never benchmarked on.
+nvcc, DDR5 188 GiB host. **Memory speed: every row before 2026-11-26 08:00 ran at DDR5-4000;
+the owner then ran the box at 5600 MT/s** (root would be needed for `dmidecode` to re-read it;
+the speed is the owner's report). The serve's home moved with the swap: through the night the
+second card (RTX 5060 Ti) ran the user's serve and was never benchmarked on; since 08:53 the
+user's serve (the same UD-Q4_K_XL pack, ctx 204800, this repo's 07:01 engine binary) runs on
+the 4080 SUPER itself and the 5060 Ti is idle - from now on the main card's own serve is the
+confounder to account for in every series.
 
 ## The harness
 
@@ -62,13 +68,16 @@ Resolved (04:30): the clean cold-process series above sits at the warm harness's
 so the preset is not intrinsically slow - the baseline row sat 35-53% low because the serve's
 ~20-core bursts ran through it (it predates the per-arm serve accounting). The idle-clock ramp
 theory does not survive: with the serve quiet, a cold process on freshly-captured graphs measures
-the same as the warm harness. Every row from tonight carries its serve CPU-seconds.
+the same as the warm harness. Every row from tonight carries its serve CPU-seconds. Rows dated
+2026-11-26 before 08:00 are DDR5-4000 territory (see The machine; the 5600 series is due).
 
 Manual reference at `93045a4b` (hand run): story generation **52 tok/s decode**, 91k prompt
 **3700 tok/s prefill**. The owner re-verified the same way at the 07:01 build (HEAD `3651cfb0`,
 their method: "Привет" warm-up turn, long Russian moon story, default sampling, rate read over
 the long generation): **55 tok/s decode, prefill ~3700 unchanged** - accepted as the interim
-Ada-main result. A 32-token cold `generate` at the same commit: 27.6-27.8 tok/s decode,
+Ada-main result. Re-measured on DDR5-5600 at the same build and method (08:47): **decode 67
+tok/s, prefill 4068** - the swap row is under the RAM verdict below. A 32-token cold
+`generate` at the same commit: 27.6-27.8 tok/s decode,
 37.9-39.1 tok/s prefill, TTFT ~17 s - the short run carries the cold expert windows, the long
 runs reach the steady state; both are comparisons against themselves, not against the hand run.
 
@@ -117,6 +126,19 @@ MT/s run one engine at a time; and `sudo dmidecode -t memory` may show the four 
 are single-rank and could hold a higher speed without removal (a board/BIOS question, not a
 physics one). The `--pool-workers` knob above the auto size changes decode by only a couple of
 percent here; the bandwidth is the wall.
+
+**Swap measured on the main card (08:47, the owner's run).** DDR5-5600, the same 07:01 engine
+binary that measured 55 / ~3700 at DDR5-4000, the same serve command (the user's serve now on
+the 4080 SUPER itself), the same method ("Привет" warm-up, long Russian moon story, default
+sampling, rate over the long generation; the 91k-prompt prefill): **decode 55 -> 67 tok/s
+(+21.8%), prefill 3700 -> 4068 tok/s (+9.1%)**. Decode landed just above the predicted
++10-20% band - the verdict holds. Prefill beating its ~0 prediction has a clean explanation:
+the +0 was measured on the 5060 Ti serve, which runs `--resident-experts` (its prompt experts
+never touch RAM); this serve streams the prompt path's experts from RAM (the night's runs read
+~57 GB/s through the pool), so its prefill rides the channels too and takes ~9% of the +40%
+theory. With 67 tok/s at 5600 the earlier per-knob measurements remain closed (the knobs moved
+with the wall, not against it), but the community series and the harness's ram_gbps predate the
+swap - re-run both before quoting a baseline again.
 
 ## Optimization: `qsa_qproj_half` at 80 SMs - measured, the gate stands
 
