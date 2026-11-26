@@ -134,18 +134,26 @@ the 320 W power limit stated. Caveat recorded in advance: the protocols differ (
 cold per fixture, standard-v1 is its own document) - the comparison is per-engine steady states,
 not a like-for-like protocol race; the ABBA repetition guards drift, not protocol.
 
-## The expert cache hit rate and the learned profile (experiment queued)
+## The expert cache hit rate and the learned profile (measured: cold-start value only)
 
 The user's serve (read-only log, `/home/ilfarpro/.cache/basalt/aefd5d98dc650ed4/engine.log`,
 03:07): decode expert cache hit rate 51.6-60.8% per request window on the bundled static profile,
 3304 slots (elastic: shrinks to 3284 when KV needs cells), 279M blobs served from RAM since start,
-zero from file. With ~40% of the ~384 per-token lookups missing VRAM and each miss a full blob
-RAM copy, this is the largest remaining cost decode has. The engine already learns exactly such
-a ranking (`--expert-profile-save`: heat accumulates through the session, the file is written at
-stdin close/QUIT and on a timer, and a present file replaces the model's profile at the next
-start - `load/model.cpp`, `serve/tier_profile.cpp`); it is opt-in and off on this machine. The
-queued warm-harness A/B (learn pass on conv+struct+prose, then ON/OFF arms with the file present)
-is in the night chain; if it moves ms/window the serve should restart with the flag.
+zero from file. The engine can learn its own ranking (`--expert-profile-save`: heat accumulates
+through the session, written at stdin close/QUIT and on a timer; a present file replaces the
+model's profile at the next serve start - `load/model.cpp`, `serve/tier_profile.cpp`).
+
+Measured (03:49/03:58, clean paired warm arms, serve 0 and 1 CPU-s): conv 41.59/44.49 ms/window
+(OFF) against 40.20/44.46 (ON), struct and prose within noise; per-request hit rates 61-67.5% in
+both arms. That is the whole effect and it is small, and the reason is structural: the adaptive
+tier already re-places the cache toward live traffic within minutes, so a learned file only
+buys the first minutes after a start - on a 14-hour session both arms reach the same placement.
+The serve's steady 52-61% is therefore the post-adaptation ceiling for its slot count, not a
+deficit a profile can fix; raising it means more VRAM slots, which the card does not have
+(the `--expert-cache` cap experiment, above, moved the hit rate zero). Verdict: worth switching
+on for the serve (it is free, quality-neutral, and warms the first minutes after every restart),
+worth no expectation of steady-state speed. The profile file `/tmp/lp/all.prof` from
+conv+struct+prose is the artifact.
 
 ## Knobs measured and rejected (2026-11-26)
 
