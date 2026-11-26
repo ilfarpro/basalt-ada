@@ -283,3 +283,18 @@ conv+struct+prose is the artifact.
   territory, since a hand run repeats over a pack the RAM already holds. The community row stays
   the cold canonical; night chains see hot caches after their first load and must not be
   cross-compared to it.
+
+## A second card as the expert tier across capability: sm_89 main + sm_120 peer (measured at ee6dc0d6)
+
+The user's run, the manual-reference method (serve, a short "Привет" turn, the long Russian moon
+prompt, rate over a long generation; 91k-prompt prefill): **decode 67 -> 93 tok/s (+38.8%), prefill
+4068 -> 4054 - within noise**. That parity is the design, not lost ground: the peer takes decode's
+expert rows and the prompt's routed-only chunks **up to 2559 tokens**, and the 91k prompt runs in
+21248-token chunks, so the peer card sits the prefill out. The slot is electrically PCIe 4.0 x4
+(~6.5-7 GB/s), which moves only the expert load at start and rows that cross.
+The run needs `--vram-reserve-mib 512`: at the default 128 the first prompt OOMs in the MMQ - the
+main card ends loading at 205 MiB free against one-card serving's working 211, and the prompt's
+MMQ loads its modules, stream-k fixup buffers and windows after that free line; the peer card's
+price in `cache_size.cpp` reserves its transport buffers but nothing for the kernels it loads
+lazily on its first rows. Open: price both items where the tier sizes itself (MMQ failures now
+name the ask, the card and its free memory).

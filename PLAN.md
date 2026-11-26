@@ -170,30 +170,24 @@ new kernel bodies and no kernel source changed.
       (this machine's driver is one CUDA minor under the toolkit, which rejects its PTX). Fixed:
       the three skip such a device the way `window_gemm_two_gpu` does, the test file gets the
       peer's SASS under a cross-capability peer flag; the rerun passes 8/8.
-- [ ] End to end: `--gpu 0,1 --gpu-mode peer` on the UD-Q4_K_XL pack, decode and prefill against
-      the one-card baseline (67 / 4068 tok/s at DDR5-5600), recorded in `docs/ada-optimizations.md`
-      before any speed claim. This machine's peer slot is electrically PCIe 4.0 x4 (~6.5-7 GB/s):
-      it moves the expert load at start and any row crossing, not the steady-state decode math,
-      which keeps expert rows on the card that holds them.
-      First serve start caught a cross-capability e2e bug the unit tests missed: with a peer card
-      the engine auto-enables the prompt split (whole layers on the peer), the verifier head split,
-      and the GDN mixer split, all of which run the *model's own* kernels (attention, dense GEMM,
-      `q80p_vhead`) on that card - compiled only for the main capability, so the peer card threw them
-      into the PTX JIT. A cross-capability peer build compiles only the peer *tier*'s kernels for the
-      peer card, not the model's layers, so the peer card is the expert tier and nothing else. Fixed:
-      `core::card_runs_model_kernels(dev)` (the device's capability is the build's) now gates the
-      three planners - the prompt split (`split_plan`), the head split (`hs_plan`, `hs_plan_two`)
-      and the mixer split (`gs_plan_bw`) - so a cross-capability peer is used only for expert MMQ.
-      Rerun the serve start in a serve-stopped window: the three splits must decline, the peer tier
-      (experts rows, prompt-chunk rows) must stay, then measure decode and prefill.  The reruns
-      declined the splits and the peer tier loaded clean, but the first prompt of a peer serve dies
-      in the MMQ with a bare "out of memory": the main card ends loading at 205 MiB free (one-card
-      serving runs fine at 211) and the prompt's first MMQ launch takes its module load, scratch
-      pool and buffers after the cache is sized; the peer card's price (`cache_size.cpp`) reserves
-      its transport buffers but nothing for the peer kernels that load lazily on its first rows.
-      Next: MMQ allocation failures now name the ask, the card and its free memory; one run with
-      both reserves raised says which card's price is short - price that item where the tier sizes
-      itself, and the reserve stays an honest floor.
+- [x] End to end: `--gpu 0,1 --gpu-mode peer` on the UD-Q4_K_XL pack.  The serve reruns declined
+      the three splits (gate `card_runs_model_kernels`: the model's own kernels are compiled for
+      the main capability only; a cross-capability peer is the expert tier and nothing else) and
+      the peer tier loaded clean; the first prompt OOMed in the MMQ, the main card ending loading
+      at 205 MiB free against one-card serving's working 211 - MMQ takes its module load, stream-k
+      fixup buffers and windows after the cache is sized.  With `--vram-reserve-mib 512` the run
+      went through: the user measured **decode 67 -> 93 tok/s (+38.8%), prefill 4068 -> 4054**
+      (parity expected: chunks run 21248 tokens on the 91k prompt, the peer takes only chunks of
+      up to 2559).  Recorded in `docs/ada-optimizations.md` before the claim, machine's peer slot
+      electrically PCIe 4.0 x4 (~6.5-7 GB/s): it moves the expert load at start and row crossings,
+      not the steady-state decode math.
+- [ ] The peer's prompt headroom is priced: make `--gpu-mode peer` work on the default reserves.
+      `cache_size.cpp` is short two items - the main card owes the room the prompt's MMQ loads
+      after the cache is sized (modules, stream-k fixup tiles, beside the windows), and the peer
+      card owes the kernels it loads lazily on its first rows (main keeps 96 MiB back for lazy
+      kernels, the peer nothing).  Take the figures from the MMQ failure messages (they now name
+      the ask, the card and the free) and price them where the tier sizes itself; the reserve
+      stays an honest floor.
 
 ## Later Ada work (out of the scope above)
 
