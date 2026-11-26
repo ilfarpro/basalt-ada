@@ -292,9 +292,9 @@ prompt, rate over a long generation; 91k-prompt prefill): **decode 67 -> 93 tok/
 expert rows and the prompt's routed-only chunks **up to 2559 tokens**, and the 91k prompt runs in
 21248-token chunks, so the peer card sits the prefill out. The slot is electrically PCIe 4.0 x4
 (~6.5-7 GB/s), which moves only the expert load at start and rows that cross.
-The run needs `--vram-reserve-mib 512`: at the default 128 the first prompt OOMs in the MMQ - the
-main card ends loading at 205 MiB free against one-card serving's working 211, and the prompt's
-MMQ loads its modules, stream-k fixup buffers and windows after that free line; the peer card's
-price in `cache_size.cpp` reserves its transport buffers but nothing for the kernels it loads
-lazily on its first rows. Open: price both items where the tier sizes itself (MMQ failures now
-name the ask, the card and its free memory).
+The first peer serves OOMed on their first prompt: the elastic KV's back-in spends the free VRAM
+above the reserve by design, but it read the raw asked reserve while the loader had raised it, and
+what the first MMQ launch pays inside that room - lazy modules, cuBLAS's first GEMM, the pool's
+stream-k tiles, ~162 MiB measured - was on nobody's ledger; the peer's price held nothing for its
+own lazily loaded tier kernels (91 MiB there). Fixed: the strip stops at the reserve as charged,
+the peer price holds the same 96 MiB back; verified on the native serve's default reserve.
