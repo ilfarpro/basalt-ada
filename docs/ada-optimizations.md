@@ -133,10 +133,16 @@ the 4080 SUPER itself), the same method ("Привет" warm-up, long Russian mo
 sampling, rate over the long generation; the 91k-prompt prefill): **decode 55 -> 67 tok/s
 (+21.8%), prefill 3700 -> 4068 tok/s (+9.1%)**. Decode landed just above the predicted
 +10-20% band - the verdict holds. Prefill beating its ~0 prediction has a clean explanation:
-the +0 was measured on the 5060 Ti serve, which runs `--resident-experts` (its prompt experts
-never touch RAM); this serve streams the prompt path's experts from RAM (the night's runs read
-~57 GB/s through the pool), so its prefill rides the channels too and takes ~9% of the +40%
-theory. With 67 tok/s at 5600 the earlier per-knob measurements remain closed (the knobs moved
+the +0 was measured on the 5060 Ti serve running the NVFP4 pack, whose experts have **no
+CPU-pool share** (the AVX kernels read i-quant/Q4_K/Q8 rows; NVFP4 decodes on the GPU) - its
+prompt path streams them over PCIe, where the probed ~18 GB/s link, not the RAM, is the wall.
+The Q4_K_XL serve's prompt path runs ~60% of its experts on the CPU pool (a one-shot night run:
+"on the CPU 1564 (share 0.60)"), which streams them straight from the pinned arena - so its
+prefill rides the channels and takes ~9% of the +40% theory. (Both serves were in resident RAM
+mode throughout: with an expert profile present it is the default - options.cpp - and their
+logs say "resident RAM mode ... no file reads"; `--resident-experts` as a flag matters on PCs
+where the pack does not fit RAM, sizing a pinned copy instead of refusing or slow-mmap'ing.)
+With 67 tok/s at 5600 the earlier per-knob measurements remain closed (the knobs moved
 with the wall, not against it), but the community series and the harness's ram_gbps predate the
 swap - re-run both before quoting a baseline again.
 
