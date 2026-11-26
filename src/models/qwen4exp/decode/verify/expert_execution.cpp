@@ -19,15 +19,12 @@ bool Verifier::dm_begin(std::string& err, DecodeGaps* gm) {
     if (!dm_sync(err)) return false;
     decode_events().stamp(4);
     if (gm) gm->mark(13);
-    *(volatile uint32_t*) (dm_->h_w + 0) = 0;
-    *(volatile uint32_t*) (dm_->h_w + 16) = 0;
-    *(volatile uint32_t*) (dm_->h_w + 32) = 0;
-    *(volatile uint32_t*) (dm_->h_w + 48) = 0;
-    *(volatile uint32_t*) (dm_->h_w + 52) = 0;
-    *(volatile uint32_t*) (dm_->h_w + 60) = 0;
+    // The host zeros these words, but the peer kernel writes some of them (done, diag, the mixer's done) into the
+    // same host-mapped cache lines afterwards: plain stores here would leave dirty lines whose late write-back
+    // overwrites what the peer writes (`fill_u32_nt`'s note).
+    for (uint32_t off : {0u, 16u, 32u, 48u, 52u, 60u}) basalt::platform::fill_u32_nt(dm_->h_w + off, 1, 0);
     if (dm_->tag && dm_->tag_dirty) {   // a released window left rows written: back to unwritten
-        for (size_t i = 0; i < dm_->rows_words; ++i)
-            ((volatile uint32_t*) dm_->h_rows)[i] = basalt::kernels::dec_moe_tag_word();
+        basalt::platform::fill_u32_nt(dm_->h_rows, dm_->rows_words, basalt::kernels::dec_moe_tag_word());
         std::atomic_thread_fence(std::memory_order_seq_cst);
         dm_->tag_dirty = false;
     }

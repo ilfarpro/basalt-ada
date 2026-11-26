@@ -29,6 +29,10 @@
 
 #include "basalt/log.hpp"
 
+#if BASALT_CUDA_CC >= 120
+// the sm_120a form throughout: the block-scaled `mma.sync.aligned.kind::mxf4nvf4`, the TMA / mbarrier pipeline and
+// setmaxnreg.  an sm_89 build compiles the portable section at the end of the file instead; see PLAN.md.
+
 namespace basalt::prefill::fp4_dense {
 namespace {
 
@@ -783,3 +787,32 @@ void swiglu(const void* w_gate, const void* w_up, const float* s_gate, const flo
 }
 
 }  // namespace basalt::prefill::fp4_dense
+
+#else  // BASALT_CUDA_CC < 120
+
+// Ada's build: the byte count is live, every other entry refuses (fp8_gemm.cu's note, with e2m1 codes and the
+// `kind::mxf4nvf4` MMA in place of FP8; the conversion kernels of basalt::kernels::nvfp4p are portable and stay).
+namespace basalt::prefill::fp4_dense {
+namespace {
+[[noreturn]] void not_built() {
+    basalt::log::error("basalt", "nvfp4 dense prefill: the block-scaled MMA path is not built for sm_%d; NVFP4 planes need the Blackwell card", BASALT_CUDA_CC);
+    std::exit(1);
+}
+}  // namespace
+
+size_t act_bytes(int64_t rows, int64_t cols) {   // the form above, with kBT (256) written out
+    return (size_t) rows * (size_t) (cols / 2) + (size_t) ((rows + 255) / 256 * 256) * (size_t) (cols / 16);
+}
+
+void quantize(const float*, int64_t, int64_t, int64_t, void*, float*, void*) { not_built(); }
+void quantize_amax(const uint16_t*, const float*, int64_t, int64_t, int64_t, void*, float*, void*) { not_built(); }
+void rms_norm_quantize(const float*, const float*, float, int64_t, int64_t, void*, float*, float*, void*) { not_built(); }
+void rms_norm_quantize(const uint16_t*, const float*, float, int64_t, int64_t, void*, float*, uint16_t*, void*) { not_built(); }
+void product(const void*, const float*, int64_t, int64_t, const void*, const float*, int64_t, float*, int64_t, bool, void*) { not_built(); }
+void product_bf16(const void*, const float*, int64_t, int64_t, const void*, const float*, int64_t, uint16_t*, int64_t, void*) { not_built(); }
+void product_add_bf16(const void*, const float*, int64_t, int64_t, const void*, const float*, int64_t, uint16_t*, int64_t, void*) { not_built(); }
+void swiglu(const void*, const void*, const float*, const float*, int64_t, int64_t, const void*, const float*, int64_t, uint16_t*, int64_t, void*, float*) { not_built(); }
+}  // namespace basalt::prefill::fp4_dense
+
+#endif  // BASALT_CUDA_CC >= 120
+

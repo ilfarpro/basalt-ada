@@ -11,6 +11,7 @@
 //   gdn_chunk_parity [seed]          the checks
 //   gdn_chunk_parity --bench         and the timings at T = 4096, 16384 and 32768 (one layer), old and new alternating
 #include "basalt/models/qwen4exp/prefill/kernels.hpp"
+#include "basalt/core/cuda_cc.hpp"
 
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
@@ -445,8 +446,18 @@ int main(int argc, char** argv) {
         fails += check(32768, seed + 32769, 1);
         int ndev = 0;
         ck(cudaGetDeviceCount(&ndev), "devices");
-        // the launch's shared-memory opt-in is per device: every other device must run it too
+        // the launch's shared-memory opt-in is per device: every other device must run it too;
+        // a device that runs none of this build's kernels (a cross-capability peer, the split rule of
+        // one capability) is skipped, not failed
         for (int d = 1; d < ndev; ++d) {
+            int cc_major = 0, cc_minor = 0;
+            cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, d);
+            cudaDeviceGetAttribute(&cc_minor, cudaDevAttrComputeCapabilityMinor, d);
+            if (!basalt::core::cuda_cc_is_ours(cc_major, cc_minor)) {
+                std::printf("device %d is sm_%d%d, this build's kernels are sm_%d; skipped\n", d, cc_major, cc_minor,
+                            basalt::core::kCudaCC);
+                continue;
+            }
             ck(cudaSetDevice(d), "set device");
             std::printf("device %d\n", d);
             fails += check(1000, seed + 1000);

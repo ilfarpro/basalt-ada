@@ -1,9 +1,11 @@
 // tests/kernels/window_gemm_two_gpu.cpp - the window gemm on a second card planned as the main card (plan_device): every
 // call a decode window of Qwen3.8-27B layers makes (NVFP4 planes: the GDN and attention groups, their AddBf16 outputs, the
 // SwiGLU pair with its bf16 rows, the down product), at T = 1..16, gives the main card's bits.  The same calls planned by
-// the second card's own SM count are reported (they may round differently).  Exit 77 without two GPUs.
+// the second card's own SM count are reported (they may round differently).  Exit 77 without two GPUs or when the
+// second card does not run this build's kernels (a cross-capability peer card).
 #include "basalt/kernels/nvfp4_planes.hpp"
 #include "basalt/kernels/window_gemm.hpp"
+#include "basalt/core/cuda_cc.hpp"
 
 #include <cuda_runtime.h>
 
@@ -139,6 +141,15 @@ int main() {
     int n = 0;
     if (cudaGetDeviceCount(&n) != cudaSuccess || n < 2) {
         std::printf("two GPUs needed; skipped\n");
+        return 77;
+    }
+    // the test replays the main card's kernels on the second card, which is the split rule of the same capability;
+    // a cross-capability peer card runs only the peer kernels, so it is skipped, not failed
+    int cc_major = 0, cc_minor = 0;
+    cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, 1);
+    cudaDeviceGetAttribute(&cc_minor, cudaDevAttrComputeCapabilityMinor, 1);
+    if (!basalt::core::cuda_cc_is_ours(cc_major, cc_minor)) {
+        std::printf("CUDA1 is sm_%d%d, this build's kernels are sm_%d; skipped\n", cc_major, cc_minor, basalt::core::kCudaCC);
         return 77;
     }
     int sms[2] = {};

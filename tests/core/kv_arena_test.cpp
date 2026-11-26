@@ -5,8 +5,10 @@
 
 #include <cuda_runtime.h>
 
+#include <chrono>
 #include <cstdio>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -66,7 +68,17 @@ int main() {
     const size_t before = free_vram();
     const uint64_t add = a.grow_bytes(200000);
     if (add == 0 || !a.map(200000, err) || a.cells() < 200000) return fail("map more", err);
-    if (before - free_vram() + (4u << 20) < add) return fail("VRAM taken");
+    // every VRAM reading here is a device total, so a test running beside this one on the same card can move it
+    // between our readings; the checks retry inside a short grace with signed deltas.
+    {
+        bool taken = false;
+        for (int tries = 0; tries < 12 && !taken; ++tries) {
+            const long long delta = (long long) before - (long long) free_vram();
+            taken = delta + (4ll << 20) >= (long long) add;
+            if (!taken) std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        if (!taken) return fail("VRAM taken");
+    }
     for (size_t i = 0; i < page_bytes.size(); ++i) {
         if (a.array(i) != base[i]) return fail("address moved");
         const uint64_t b0 = (uint64_t) c0 / kPage * page_bytes[i], b1 = (uint64_t) 200000 / kPage * page_bytes[i];
@@ -76,7 +88,16 @@ int main() {
     // give back down to 10000: the VRAM back, the first cells as they were
     const size_t mid = free_vram();
     if (!a.unmap(10000, err) || a.cells() != c0) return fail("unmap", err);
-    if (free_vram() - mid + (4u << 20) < add) return fail("VRAM not given back");
+    {
+        long long best = 0;
+        for (int tries = 0; tries < 12; ++tries) {
+            const long long delta = (long long) free_vram() - (long long) mid;
+            if (delta > best) best = delta;
+            if (best + (4ll << 20) >= (long long) add) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        if (best + (4ll << 20) < (long long) add) return fail("VRAM not given back");
+    }
     for (size_t i = 0; i < page_bytes.size(); ++i)
         if (!all(a.array(i), (uint64_t) c0 / kPage * page_bytes[i], (uint8_t) (i + 1))) return fail("kept after unmap");
     // to nothing, then the whole context

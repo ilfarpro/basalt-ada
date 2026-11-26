@@ -7,6 +7,7 @@
 #include "basalt/models/qwen4exp/decode/layer.hpp"
 #include "basalt/models/qwen4exp/decode/session.hpp"
 #include "basalt/core/staged_copy.hpp"
+#include "basalt/core/cuda_cc.hpp"
 #include "basalt/models/qwen4exp/kernels/kv_q4.hpp"
 #include "basalt/models/qwen4exp/kernels/kv_q8.hpp"
 #include "basalt/models/qwen4exp/kernels/qsa.hpp"
@@ -223,6 +224,18 @@ int main() {
     if (cudaGetDeviceCount(&n) != cudaSuccess || n < 1) {
         std::printf("prompt_split_state_test: no GPU, skipped\n");
         return 77;
+    }
+    // the second device runs these formats' kernels there, which is the split rule of one capability;
+    // a device of another capability runs none of this build's kernels, so it is skipped, not failed
+    if (n > 1) {
+        int cc_major = 0, cc_minor = 0;
+        cudaDeviceGetAttribute(&cc_major, cudaDevAttrComputeCapabilityMajor, 1);
+        cudaDeviceGetAttribute(&cc_minor, cudaDevAttrComputeCapabilityMinor, 1);
+        if (!basalt::core::cuda_cc_is_ours(cc_major, cc_minor)) {
+            std::printf("prompt_split_state_test: CUDA 1 is sm_%d%d, this build's kernels are sm_%d; the second device is skipped\n",
+                        cc_major, cc_minor, basalt::core::kCudaCC);
+            n = 1;
+        }
     }
     for (int dev : {0, n > 1 ? 1 : 0}) {
         run_format("fp16", false, false, false, dev);

@@ -41,6 +41,12 @@
 
 [[noreturn]] void ggml_cuda_error(const char * stmt, const char * func, const char * file, int line, const char * msg);
 
+// An allocation or launch-prep failure in an engine whose cards are fully loaded: the ask in bytes, the card it went
+// to and the room that card still had.  A bare "out of memory" names none of these, and the first prompt is where
+// they surface - on a multi-card run, on whichever card the tier sizing got wrong.
+[[noreturn]] void ggml_cuda_oom(const cudaError_t err, long long asked_bytes, const char * stmt,
+                                const char * func, const char * file, int line);
+
 #define CUDA_CHECK(err)                                                                   \
     do {                                                                                  \
         auto err_ = (err);                                                                \
@@ -58,9 +64,14 @@ void ggml_cuda_func_load(const void * symbol);
         static bool shared_memory_limit_raised[GGML_CUDA_MAX_DEVICES] = { false };                         \
         const int   id                                                = ggml_cuda_get_device();            \
         if (!shared_memory_limit_raised[id]) {                                                             \
-            CUDA_CHECK(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, nbytes)); \
-            shared_memory_limit_raised[id] = true;                                                         \
-        }                                                                                                  \
+            const cudaError_t e_ = cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, \
+                                                        nbytes);                                         \
+            if (e_ != cudaSuccess)                                                                       \
+                ggml_cuda_oom(e_, (long long) (nbytes),                                                  \
+                              "cudaFuncSetAttribute(" #kernel ", MaxDynamicSharedMemorySize)",          \
+                              __func__, __FILE__, __LINE__);                                             \
+            shared_memory_limit_raised[id] = true;                                                       \
+        }                                                                                                \
     } while (0)
 
 static constexpr __device__ int ggml_cuda_get_physical_warp_size() {

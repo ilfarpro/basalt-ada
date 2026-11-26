@@ -19,9 +19,18 @@ endif()
 option(BUILD_TESTING "Build the tests and parity programs" OFF)
 # Covers the project's own C++ and CUDA sources only; off by default so a newer compiler's new warning cannot break a user build.
 option(WERROR "Treat compiler warnings as errors" OFF)
-# Optional peer architectures: building the peer-tier kernels for sm_89 (Ada) in addition to sm_120
-# allows a non-Blackwell card to serve as the expert tier, but adds build time.
+# Optional peer architectures: building the peer-tier kernels for the other architecture's cards in addition
+# to the main card's allows a cross-arch card to serve as the expert tier, but adds build time.
 option(PEER_ADA "Compile peer kernels for sm_89 (Ada) in addition to sm_120" OFF)
+option(PEER_BLACKWELL "Compile peer kernels for sm_120 (Blackwell) in addition to sm_89 (Ada)" OFF)
+if(PEER_BLACKWELL)
+  if(NOT BASALT_CUDA_CC STREQUAL "89")
+    message(FATAL_ERROR "PEER_BLACKWELL is an Ada main-card build's option (CMAKE_CUDA_ARCHITECTURES 89): a Blackwell build already compiles these kernels for its own cards")
+  endif()
+  if(PEER_ADA)
+    message(FATAL_ERROR "PEER_ADA and PEER_BLACKWELL name opposite peer architectures; each belongs to the other capability's build")
+  endif()
+endif()
 if(BUILD_TESTING)
   enable_testing()
 endif()
@@ -46,7 +55,7 @@ find_package(CUDAToolkit REQUIRED)
 # Main kernels (NVFP4 tensor cores, TMA, Blackwell instructions) compile for sm_120 only.
 # When PEER_ADA is enabled, peer kernels (Q8_1/Q2_0 expert rows, standard CUDA) additionally compile
 # for sm_89 (Ada) so a non-Blackwell card can serve as the expert tier.
-# cmake/target_arch.cmake has checked CMAKE_CUDA_ARCHITECTURES: one capability, 12.0 or 12.1 (BASALT_CUDA_CC).
+# cmake/target_arch.cmake has checked CMAKE_CUDA_ARCHITECTURES: one capability, 8.9, 12.0 or 12.1 (BASALT_CUDA_CC).
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
   message(FATAL_ERROR "CUDA ${CMAKE_CUDA_COMPILER_VERSION}: basalt needs CUDA 13.0 or newer")
 endif()
@@ -535,11 +544,10 @@ target_link_libraries(basalt-load PRIVATE core kernels)
 endif()
 
 # Peer-tier compilation: the expert-window decode kernels, the peer prefill mmq/iota kernels and the
-# small utility kernels that run on the peer card additionally compile for sm_89 (Ada), so a non-Blackwell
-# card can serve as the expert tier. Must be set BEFORE the targets that compile these files are defined.
-if(PEER_ADA)
-  add_compile_definitions(BASALT_PEER_ADA=1)
-  set_source_files_properties(
+# small utility kernels that run on the peer card additionally compile for the cross-arch peer's capability,
+# so a card of the other architecture can serve as the expert tier: sm_89 in a Blackwell build (-DPEER_ADA=ON),
+# sm_120 in an Ada build (-DPEER_BLACKWELL=ON). Must be set BEFORE the targets that compile these files are defined.
+set(BASALT_PEER_KERNEL_SOURCES
     src/models/qwen4exp/kernels/dec_moe.cu
     src/models/qwen4exp/kernels/dec_moe_peer_q0_m0.cu
     src/models/qwen4exp/kernels/dec_moe_peer_q0_m1.cu
@@ -571,7 +579,27 @@ if(PEER_ADA)
     src/kernels/cuda/quantize_act.cu
     src/kernels/cuda/wait_abort.cu
     src/kernels/cuda/sampler.cu
-    src/kernels/cuda/elementwise.cu
+    src/kernels/cuda/elementwise.cu)
+if(PEER_ADA)
+  add_compile_definitions(BASALT_PEER_ADA=1)
+  set_source_files_properties(${BASALT_PEER_KERNEL_SOURCES}
+    PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
+endif()
+if(PEER_BLACKWELL)
+  add_compile_definitions(BASALT_PEER_BLACKWELL=1)
+  set_source_files_properties(${BASALT_PEER_KERNEL_SOURCES}
+    PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_120,code=sm_120")
+endif()
+
+# Ada as a main card (PLAN.md): dense_tc's and qsa_mid's sm_89 bodies are designed for Ada, so their parity tests run
+# on an Ada card; verify_kernels is plain CUDA apart from its lazy L2 prefetch, which reads line by line on Ada.
+# Per file, like the dec_moe files above: the rest of the qwen4exp kernel target is not sm_89-clean
+# yet, so the target as a whole cannot carry an 89 cubin.
+if(PEER_ADA)
+  set_source_files_properties(
+    src/models/qwen4exp/kernels/dense_tc.cu
+    src/models/qwen4exp/kernels/qsa_mid.cu
+    src/models/qwen4exp/kernels/verify_kernels.cu
     PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
 endif()
 
@@ -641,6 +669,45 @@ set_source_files_properties(src/kernels/cuda/native_mmvq.cu src/kernels/cuda/nat
     src/models/qwen4exp/kernels/q80_proxy.cu
     src/models/qwen4exp/kernels/q80_vhead.cu
     PROPERTIES COMPILE_OPTIONS "--use_fast_math")
+# dense_tc_parity's reference side: the native mmvq runs on the Ada card beside the kernels it checks (set AFTER the
+# block above so its --use_fast_math survives; native_mmvq.cu has no sm_90-only instructions)
+if(PEER_ADA)
+  set_source_files_properties(src/kernels/cuda/native_mmvq.cu
+    PROPERTIES COMPILE_OPTIONS "--use_fast_math;--generate-code=arch=compute_89,code=sm_89")
+endif()
+# dec_commit_parity's conv-commit side lives in the kernels library; plain CUDA, it runs on the Ada card too.  The
+# indexer it checks against is plain CUDA as well, and its --use_fast_math (set above) must survive.
+if(PEER_ADA)
+  set_source_files_properties(src/kernels/cuda/gdn_commit.cu
+    PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
+  set_source_files_properties(src/models/qwen4exp/kernels/native_qsa_indexer.cu
+    PROPERTIES COMPILE_OPTIONS "--use_fast_math;--generate-code=arch=compute_89,code=sm_89")
+endif()
+# dec_moe_parity's reference side: native_expert_grouped runs on the Blackwell card beside the peer kernels it
+# checks (set AFTER the --use_fast_math block above so it survives; plain CUDA, no sm_120-only instructions).
+if(PEER_BLACKWELL)
+  set_source_files_properties(src/models/qwen4exp/kernels/native_moe.cu
+    PROPERTIES COMPILE_OPTIONS "--use_fast_math;--generate-code=arch=compute_120,code=sm_120")
+endif()
+# Ada as a main card (PLAN.md): inkling2's and hy4flash's kernels are plain CUDA apart from their L2
+# read-ahead, which walks prefetch.global.L2 line by line on Ada (basalt/kernels/l2_pf.cuh).  Per file:
+# the libraries' other files are not sm_89-clean yet, so an Ada card can run only these kernels.
+if(PEER_ADA)
+  set_source_files_properties(
+    src/models/inkling2/kernels/ops.cu
+    src/models/inkling2/kernels/glue.cu
+    PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
+  set_source_files_properties(src/models/hy4flash/kernels/ops.cu
+    PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
+endif()
+
+# hc_fused.cu on an sm_89 main-card build: the Blackwell TMA helpers are dead code there by design (the kernel body
+# is sm_90 and up; the host runs the unfused hc8 path), and --Werror all-warnings would turn that dead code into an
+# error.  The suppression is the file's and an 89 build's, not the Blackwell build's.
+if(BASALT_CUDA_CC STREQUAL "89")
+  set_source_files_properties(src/models/qwen4exp/kernels/hc_fused.cu
+    PROPERTIES COMPILE_OPTIONS "--diag-suppress=177")
+endif()
 
 # ---- engine -----------------------------------------------------
 # The COMPOSED layer lives here and not in `core`, because it calls kernels and `kernels`
@@ -766,7 +833,8 @@ if(BUILD_TESTING)
   add_executable(expert_cache_segmented_test tests/core/expert_cache_segmented_test.cpp)
   target_link_libraries(expert_cache_segmented_test PRIVATE model_qwen4exp_engine)
   basalt_gpu_test(NAME expert_cache_segmented_test COMMAND expert_cache_segmented_test)
-  set_tests_properties(expert_cache_segmented_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60)
+  # the VRAM readings are device totals: a GPU test running beside these on the same card moves them mid-check
+  set_tests_properties(expert_cache_segmented_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 RUN_SERIAL TRUE)
   add_executable(file_expert_homes_test tests/core/file_expert_homes_test.cpp)
   target_link_libraries(file_expert_homes_test PRIVATE model_qwen4exp_engine)
   basalt_embed_manifest(file_expert_homes_test)
@@ -780,7 +848,7 @@ if(BUILD_TESTING)
   add_executable(kv_arena_test tests/core/kv_arena_test.cpp)
   target_link_libraries(kv_arena_test PRIVATE model_qwen4exp_engine)
   basalt_gpu_test(NAME kv_arena_test COMMAND kv_arena_test)
-  set_tests_properties(kv_arena_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60)
+  set_tests_properties(kv_arena_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 RUN_SERIAL TRUE)
   endif()
 endif()
 
@@ -1034,6 +1102,10 @@ set_tests_properties(window_gemm_two_gpu PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 
 # the FP8 and FP4 codes as bf16x2 (narrow_bf16.cuh): the direct cvt (CUDA 13.2+) and the f16 route, every input
 add_executable(narrow_bf16_parity tests/kernels/narrow_bf16_parity.cu)
 set_target_properties(narrow_bf16_parity PROPERTIES CUDA_ARCHITECTURES ${BASALT_CUDA_ARCH_A})
+# with a planned Ada main card the binary carries the sm_89 cubin too: run on each of the two cards, its digests must match
+if(PEER_ADA)
+  set_property(TARGET narrow_bf16_parity APPEND PROPERTY CUDA_ARCHITECTURES 89-real)
+endif()
 target_include_directories(narrow_bf16_parity PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(narrow_bf16_parity PRIVATE ${_gpu_runtime_target})
 basalt_gpu_test(NAME narrow_bf16_parity COMMAND narrow_bf16_parity)
@@ -1266,6 +1338,7 @@ add_executable(hc_fused_parity tests/models/qwen4exp/kernels/hc_fused_parity.cpp
 target_include_directories(hc_fused_parity PRIVATE ${_gpu_include_directories})
 target_link_libraries(hc_fused_parity PRIVATE model_qwen4exp_kernels ${_gpu_runtime_target})
 basalt_gpu_test(NAME hc_fused_parity COMMAND hc_fused_parity 20 1 8 --check-only --stress 200)
+set_tests_properties(hc_fused_parity PROPERTIES SKIP_RETURN_CODE 77)
 add_executable(mid_chain_parity tests/models/qwen4exp/kernels/mid_chain_parity.cpp)
 target_include_directories(mid_chain_parity PRIVATE ${_gpu_include_directories})
 target_link_libraries(mid_chain_parity PRIVATE model_qwen4exp_kernels ${_gpu_runtime_target})
@@ -1935,10 +2008,15 @@ if(BUILD_TESTING)
   basalt_gpu_test(NAME bf16_chunk_test COMMAND bf16_chunk_test)
   set_tests_properties(bf16_chunk_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300)
 endif()
-# a decode window's products against FP8 and NVFP4 matrices (the NVFP4 codes convert with sm_120a instructions)
+# a decode window's products against FP8 and NVFP4 matrices (the NVFP4 codes convert with sm_120a instructions,
+# narrow_bf16.cuh; sm_89 builds the same bf16x2 operands from their fields and f32)
 add_library(window_gemm STATIC src/kernels/cuda/window_gemm.cu src/kernels/cuda/window_gemm_f8.cu
                                src/kernels/cuda/window_gemm_nvfp4.cu)
 set_target_properties(window_gemm PROPERTIES CUDA_ARCHITECTURES ${BASALT_CUDA_ARCH_A})
+# with a planned Ada main card the binary carries the sm_89 cubin too: window_gemm_parity runs on either card
+if(PEER_ADA)
+  set_property(TARGET window_gemm APPEND PROPERTY CUDA_ARCHITECTURES 89-real)
+endif()
 target_include_directories(window_gemm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(window_gemm PUBLIC core ${_gpu_runtime_target})
 add_library(prefill_fp4 STATIC src/prefill/moe_fp4.cu src/prefill/fp4_dense.cu)
@@ -1987,6 +2065,16 @@ if(BUILD_TESTING)
   basalt_gpu_test(NAME prefill_cpu_share_test COMMAND prefill_cpu_share_test)
   set_tests_properties(prefill_cpu_share_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
   # a second card's share of a chunk's experts against the main card's MMQ and a double-precision reference (two GPUs)
+  # the peer half runs this test's own swiglu kernel on the peer card, so a cross-capability peer build gives the
+  # test file the peer's SASS too (sm_89 beside an sm_120 main card, sm_120 beside an sm_89 one)
+  if(PEER_ADA OR PEER_BLACKWELL)
+    set(_peer_sass 89)
+    if(PEER_BLACKWELL)
+      set(_peer_sass 120)
+    endif()
+    set_source_files_properties(tests/prefill/peer_share_parity.cu
+      PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_${_peer_sass},code=sm_${_peer_sass}")
+  endif()
   add_executable(peer_share_parity tests/prefill/peer_share_parity.cu)
   target_link_libraries(peer_share_parity PRIVATE peer_share core ggml_quants ${_gpu_runtime_target})
   basalt_gpu_test(NAME peer_share_parity COMMAND peer_share_parity)
@@ -2091,6 +2179,7 @@ if(BUILD_TESTING)
   target_link_libraries(dec_moe_parity PRIVATE model_qwen4exp_kernels artifact ggml_quants ${_gpu_runtime_target})
   basalt_gpu_test(NAME dec_moe_parity_nvfp4 COMMAND dec_moe_parity --nvfp4)   # synthetic experts: no GGUF needed
   basalt_gpu_test(NAME dec_moe_parity_kq COMMAND dec_moe_parity --kq)   # synthetic K-quant and i-quant experts at the real geometry
+  set_tests_properties(dec_moe_parity_nvfp4 dec_moe_parity_kq PROPERTIES SKIP_RETURN_CODE 77)
   endif()
   # native expert pairs on synthetic ggml-quantized weights at 2560/640: GPU and CPU experts against the float
   # reference, GPU dequantizers against to_float.

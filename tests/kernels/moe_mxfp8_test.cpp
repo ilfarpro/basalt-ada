@@ -1,6 +1,7 @@
 // tests/kernels/moe_mxfp8_test.cpp - prefill::mxfp8 parity against double-precision CPU reference on real Inkling 2
 // Mini expert shapes (E=2304, F=1152) and --bench TOP/s. Exit 77 without a GPU.
 #include "basalt/prefill/moe_mxfp8.hpp"
+#include "basalt/core/cuda_cc.hpp"
 #define GGML_COMMON_DECL_CPP
 #include "basalt/ggml/ggml_common.h"
 
@@ -55,6 +56,10 @@ void fill_blocks(std::vector<uint8_t>& buf, uint64_t seed) {
 int main(int argc, char** argv) {
     int ndev = 0;
     if (cudaGetDeviceCount(&ndev) != cudaSuccess || ndev == 0) return 77;
+    if (basalt::core::kCudaCC < 120) {   // moe_mxfp8.cu: the block-scaled MMA path is Blackwell's
+        std::printf("moe_mxfp8_test: the MXFP8 expert prefill is not built for an sm_%d target\n", basalt::core::kCudaCC);
+        return 77;
+    }
 
     if (argc > 1 && std::strcmp(argv[1], "--bench") == 0) {
         const int E = 2304, F = 1152, n = 128, rows = 4096, k_used = 8, pairs = rows * k_used;

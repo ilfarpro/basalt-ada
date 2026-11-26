@@ -54,6 +54,7 @@ int cache_size(Context& context) {
             ? basalt::core::Verifier::hs_peer_bytes(native_head.row_bytes(), native_head.type(), n_vocab, g.n_embd, max_t,
                                                     d0, o.peer_device) : 0;
         const int64_t peer_room = (int64_t) f1 - (((int64_t) std::max(o.peer_reserve_mib, 128) << 20) +
+                                                  ((int64_t) kLazyKernelsMib << 20) +   // the tier's kernels load on its first rows
                                                   (int64_t) basalt::core::PeerExperts::device_overhead_bytes(g.n_embd, g.n_ff) + hs +
                                                   (int64_t) peer_prompt_bytes());
         // CUDA0's cache: its free memory less the reserve and what loads after the cache
@@ -82,8 +83,13 @@ int cache_size(Context& context) {
         const int64_t mtp_bind = (!o.mtp.empty() && draft_head.loaded())
                                      ? (int64_t) mtp.bind_bytes(draft_head.row_bytes(), draft_head.type(), n_vocab) : 0;
         // a server allocates its verify windows after the cache is sized: they come out of the reserve too, so the
-        // free VRAM after loading is the reserve itself
-        int64_t late_b = o.serve ? (kWindowMib << 20) : 0;
+        // free VRAM after loading is the reserve itself.  The generate path's verifier opens after the cache as
+        // well - its window runs after the prompt path - so a run that decodes in windows (--spec T) holds back
+        // the same room.  The arena is priced per token (~4 MiB each above the window's two), so a window wider
+        // than two holds back the margin plus the wider rows.
+        const int win_t = std::max(o.spec, o.serve ? 2 : 0);
+        int64_t late_b = (o.serve || o.spec >= 2)
+                             ? ((kWindowMib + (win_t > 2 ? (int64_t) (win_t - 2) * 5 : 0)) << 20) : 0;
         // the kernels that first run after the cache is sized (the prompt path's, the verify windows') load into the
         // reserve when modules load lazily.  A server loading every kernel up front still loads cuBLAS's GEMM kernels on
         // their first use and captures its window graphs after the cache, so the same room stays back for those, and
@@ -92,9 +98,7 @@ int cache_size(Context& context) {
         int64_t late_room = 0;
         {
             const char* ml = std::getenv("CUDA_MODULE_LOADING");
-            constexpr int64_t kLazyKernelsMib = 96;
-            constexpr int64_t kSlotWindowsMib = 24;   // one session's solo windows, or the batch windows
-            if (o.serve || ml == nullptr || std::strcmp(ml, "EAGER") != 0) late_room += kLazyKernelsMib << 20;
+            if (o.serve || ml == nullptr || std::strcmp(ml, "EAGER") != 0) late_room += (int64_t) kLazyKernelsMib << 20;
             if (o.serve && o.batch >= 2 && slot0_is_solo) late_room += ((int64_t) o.batch * kSlotWindowsMib) << 20;
         }
         const int64_t reserve_b = std::max<int64_t>((int64_t) o.vram_reserve_mib << 20,

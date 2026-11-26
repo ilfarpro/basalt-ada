@@ -465,6 +465,9 @@ private:
     bool home_given_up(int64_t live, std::string& e);
     bool vram_command(const std::string& cmd, std::string& e, bool for_sleep, std::string* reply = nullptr) override;
     int64_t cache_floor_slots();
+    /// The reserve as actually charged: the elastic KV strips only the free VRAM above it, because a reserve the
+    /// loader raised still owes the first prompt its load room (`kLazyKernelsMib`).  Past the floor a refusal says so.
+    int64_t elastic_floor_mib();
     int64_t kv_ceiling();
     void kv_ceiling_note() override;
     bool move_routed_below(int64_t first, const char* why, std::string& e,

@@ -15,6 +15,10 @@
 #include <cstdlib>
 #include "basalt/log.hpp"
 
+#if BASALT_CUDA_CC >= 120
+// the sm_120a form throughout: the block-scaled `mma.sync.aligned.kind::mxf4nvf4` and the `cvt.rn.satfinite.e2m1x2`
+// rounding.  an sm_89 build compiles the portable section at the end of the file instead; see PLAN.md.
+
 namespace basalt::prefill::fp4 {
 namespace {
 
@@ -1036,3 +1040,40 @@ int run_group(const Group& g, int64_t row_cap, void* stream) {
 }
 
 }  // namespace basalt::prefill::fp4
+
+#else  // BASALT_CUDA_CC < 120
+
+// Ada's build: the byte counts are live (fp8_gemm.cu's note; the constants of the form above are kKTile 128 and
+// kAStage 4608 written out, kTileTokens is the header's), every other entry refuses.  basalt::prefill::mmq keeps
+// the NVFP4 expert decode path for Ada, through the narrow_bf16 products.
+namespace basalt::prefill::fp4 {
+namespace {
+[[noreturn]] void not_built() {
+    basalt::log::error("basalt", "nvfp4 experts prefill: the block-scaled MMA path is not built for sm_%d; NVFP4 expert prefill needs the Blackwell card", BASALT_CUDA_CC);
+    std::exit(1);
+}
+}  // namespace
+
+size_t a4_bytes(int64_t rows, int64_t cols, int experts) {
+    return (size_t) ((rows + kTileTokens - 1) / kTileTokens + experts) * (size_t) (cols / 128) * 4608;
+}
+size_t scale_count(int64_t rows, int experts) {
+    return (size_t) ((rows + kTileTokens - 1) / kTileTokens + experts) * kTileTokens;
+}
+size_t token_bytes(int64_t tokens, int64_t cols) { return (size_t) tokens * (size_t) (cols / 2 + cols / 16); }
+
+void plan(const int32_t*, int, int32_t*, void*) { not_built(); }
+void rebase(const int32_t*, int, int32_t*, void*) { not_built(); }
+void quantize(const float*, const int32_t*, const int32_t*, const int32_t*, int, void*, float*, int64_t, int64_t, int64_t, void*, bool) { not_built(); }
+void quantize_f16(const uint16_t*, const int32_t*, const int32_t*, int, void*, float*, int64_t, int64_t, int64_t, void*) { not_built(); }
+void plan_blocks(const int32_t*, int, int32_t*, int32_t*, void*) { not_built(); }
+void quantize_tokens(const float*, int64_t, int64_t, int64_t, void*, float*, void*, bool) { not_built(); }
+void run(const Product&, void*) { not_built(); }
+void gather_tails(const Product&, size_t, float*, void*) { not_built(); }
+void run_experts(const Group&, int, int, void*) { not_built(); }
+int run_length(const Group&, int, int64_t) { not_built(); }
+int run_group(const Group&, int64_t, void*) { not_built(); }
+}  // namespace basalt::prefill::fp4
+
+#endif  // BASALT_CUDA_CC >= 120
+

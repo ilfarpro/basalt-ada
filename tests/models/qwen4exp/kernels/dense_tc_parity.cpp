@@ -421,8 +421,8 @@ int main(int argc, char** argv) {
     int dev = 0, major = 0;
     cudaGetDevice(&dev);
     cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev);
-    if (major < 9) {
-        std::printf("dense_tc needs thread-block clusters; skipped\n");
+    if (major < 8) {
+        std::printf("dense_tc needs compute capability 8.0+; skipped\n");
         return 77;
     }
     cudaStream_t s;

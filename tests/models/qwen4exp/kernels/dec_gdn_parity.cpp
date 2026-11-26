@@ -468,6 +468,37 @@ bool parity_seg(cudaStream_t s) {
                 a.yq = (char*) yq_r + r0 * (ZV / 32) * 36; a.C = C; a.n_embd = N; a.h_k = HK; a.h_v = HV; a.eps = EPS;
                 dec_gdn_rec(a, T[k], s);
             }
+            // state_out: dec_gdn_rec's committed state and conv history, bitwise against the commit kernel's own work
+            // on the same rows and inputs (a card without clusters runs the recurrence through the split kernel, whose
+            // commit write must equal the separate commit pass exactly).
+            long long d_state = 0;
+            for (int k = 0; k < nseg; ++k) {
+                const size_t r0 = row0[k];
+                float* st_init = upload(st0[k]);
+                float* sout = fbuf(NL * SF);
+                CK(cudaDeviceSynchronize());   // as above: the poison of state_out lands before the stream's kernels write it
+                DecRecArgs a;
+                a.state = st_init + layer * SF; a.qkv = d_qkv + r0 * C; a.conv_w = L.conv_w; a.x = d_x + r0 * N;
+                a.w_alpha = L.wa; a.w_beta = L.wb; a.dt = L.dt; a.ssm_a = L.ssm_a; a.z = d_z + r0 * ZV; a.gamma = L.gamma;
+                a.h = h_f1 + r0 * C; a.gate = g_f1 + r0 * HV; a.beta = b_f1 + r0 * HV; a.y = y_f1 + r0 * ZV;
+                a.yq = (char*) yq_r + r0 * (ZV / 32) * 36; a.C = C; a.n_embd = N; a.h_k = HK; a.h_v = HV; a.eps = EPS;
+                a.state_out = sout + layer * SF;
+                dec_gdn_rec(a, T[k], s);   // the same rows from a fresh copy: only state_out is read back
+                float* stc = upload(st0[k]);   // the expected value: the commit pass over the same rows and inputs
+                int32_t nk = T[k];
+                int32_t* nk_dev;
+                CK(cudaMalloc(&nk_dev, 4));
+                CK(cudaMemcpy(nk_dev, &nk, 4, cudaMemcpyHostToDevice));
+                CK(cudaDeviceSynchronize());
+                GdnCommitLayers c;
+                c.state = stc; c.h = h_r + r0 * C; c.qkv = d_qkv + r0 * C; c.gate = g_r + r0 * HV; c.beta = b_r + r0 * HV;
+                c.state_stride = SF; c.h_stride = 0; c.gb_stride = 0;   // both layers' states, the same rows
+                c.C = C; c.h_k = HK; c.h_v = HV; c.n_layers = NL; c.n_keep = nk_dev;
+                gdn_commit_layers(c, s, 32);
+                CK(cudaStreamSynchronize(s));
+                d_state += cmp_b("state_out", sout + layer * SF, stc + layer * SF, (size_t) SF * 4);
+                CK(cudaFree(st_init)); CK(cudaFree(sout)); CK(cudaFree(stc)); CK(cudaFree(nk_dev));
+            }
             // the segment kernels
             float *h_s = fbuf((size_t) R * C), *y_s = fbuf((size_t) R * ZV);
             float *h_f = fbuf((size_t) R * C), *g_f = fbuf((size_t) R * HV), *b_f = fbuf((size_t) R * HV),
@@ -480,10 +511,10 @@ bool parity_seg(cudaStream_t s) {
                 a.qkv = d_qkv; a.conv_w = L.conv_w; a.x = d_x; a.w_alpha = L.wa; a.w_beta = L.wb; a.dt = L.dt;
                 a.ssm_a = L.ssm_a; a.z = d_z; a.gamma = L.gamma; a.h = h_f; a.gate = g_f; a.beta = b_f; a.y = y_f;
                 a.yq = yq_f; a.C = C; a.n_embd = N; a.h_k = HK; a.h_v = HV; a.eps = EPS;
-                dec_gdn_rec_seg(a, d_rows, layer * SF, R, tmax, s);
+                dec_gdn_rec_seg(a, d_rows, layer * SF, R, tmax, R, s);
             }
             CK(cudaStreamSynchronize(s));
-            long long d = 0;
+            long long d = d_state;
             double ma = 0;
             d += cmp_f("conv seg", h_r, h_s, (size_t) R * C, ma);
             d += cmp_f("step_norm seg", y_r, y_s, (size_t) R * ZV, ma);
@@ -620,7 +651,7 @@ bool parity_wide(cudaStream_t s) {
         a.qkv = qkv2; a.conv_w = L.conv_w; a.x = x2; a.w_alpha = L.wa; a.w_beta = L.wb; a.dt = L.dt; a.ssm_a = L.ssm_a;
         a.z = z2; a.gamma = L.gamma; a.h = hs; a.gate = gs; a.beta = bs; a.y = ys; a.yq = yq; a.C = C; a.n_embd = N;
         a.h_k = HK; a.h_v = HV; a.eps = EPS;
-        dec_gdn_rec_seg(a, d_rows, 0, W + 5, W, s);
+        dec_gdn_rec_seg(a, d_rows, 0, W + 5, W, W + 5, s);
         rec(L.state, 0, 5, h1, g1, b1, y1);   // the 5-row segment alone (same state and inputs as rows 0..4)
         CK(cudaStreamSynchronize(s));
         d += cmp_f("seg wide h", h, hs, (size_t) W * C, ma) + cmp_f("seg wide y", y, ys, (size_t) W * ZV, ma);
@@ -799,6 +830,8 @@ void bench_seg(cudaStream_t s) {
         void* yq;
         CK(cudaMalloc(&h, (size_t) R * C * 4)); CK(cudaMalloc(&g, (size_t) R * HV * 4)); CK(cudaMalloc(&b, (size_t) R * HV * 4));
         CK(cudaMalloc(&y, (size_t) R * ZV * 4)); CK(cudaMalloc(&yq, (size_t) R * (ZV / 32) * 36));
+        float* gates = nullptr;   // a build without clusters runs dec_gdn_rec_seg through dec_gdn_gates (no capture allocs)
+        CK(cudaMalloc(&gates, (size_t) 2 * R * HV * 4));
         auto stages = [&](int path, int l) {
             if (path == 0) {   // per row, as the batch window ran
                 for (int k = 0; k < R; ++k) {
@@ -820,7 +853,8 @@ void bench_seg(cudaStream_t s) {
                 a.qkv = d_qkv; a.conv_w = L.conv_w; a.x = d_x; a.w_alpha = L.wa; a.w_beta = L.wb; a.dt = L.dt;
                 a.ssm_a = L.ssm_a; a.z = d_z; a.gamma = L.gamma; a.h = h; a.gate = g; a.beta = b; a.yq = yq; a.C = C;
                 a.n_embd = N; a.h_k = HK; a.h_v = HV; a.eps = EPS; a.early_trigger = false;
-                if (path == 3) { dec_gdn_rec_seg(a, d_rows, (size_t) l * SF, R, 1, s); return; }
+                a.o = y;   // the split family's raw output (and dec_gdn_gates's gates above): carried, not scratch
+                if (path == 3) { dec_gdn_rec_seg(a, d_rows, (size_t) l * SF, R, 1, R, s, nullptr, 0, 0, gates); return; }
                 for (int k = 0; k < R; ++k) {
                     DecRecArgs r = a;
                     r.state = st + ((size_t) k * NL + l) * SF; r.qkv += (size_t) k * C; r.x += (size_t) k * N;
@@ -863,7 +897,8 @@ int main(int argc, char** argv) {
     int dev = 0;
     cudaDeviceProp p{};
     CK(cudaGetDeviceProperties(&p, dev));
-    if (p.major < 9) { std::printf("dec_gdn_parity: needs thread-block clusters (compute capability %d.%d)\n", p.major, p.minor); return 77; }
+    // runs on any card: on one without clusters the engine's dec_gdn_rec entries launch the split family (their
+    // host substitution, gdn_window.cu), which is what a build for that target ships.
     std::printf("%s: %d SMs, L2 %d MB, smem/block opt-in %zu KB\n", p.name, p.multiProcessorCount, p.l2CacheSize >> 20,
                 p.sharedMemPerBlockOptin >> 10);
     cudaStream_t s;

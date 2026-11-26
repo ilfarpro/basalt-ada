@@ -5,8 +5,10 @@
 
 #include <cuda_runtime.h>
 
+#include <chrono>
 #include <cstdio>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -73,7 +75,19 @@ int main() {
         if (c.slots() != 32 || c.mapped_bytes() != 32ll << 20 || c.bytes() != 32ll << 20)
             return fail("shrunk sizes");
         if (c.full_slots() != kSlots || c.full_bytes() != kSlots * kBlob) return fail("full sizes");
-        const size_t freed = free_vram() - before;
+        const size_t freed = [before] {   // the shrink hands whole 8 MiB segments to the driver, and a GPU test running
+            // beside this one can map them before the next reading - and its own frees settle a moment later: take the
+            // best reading within a short grace, as a signed delta (a plain size_t difference wraps the other way
+            // when a neighbor has taken more than we gave back).
+            long long best = 0;
+            for (int tries = 0; tries < 12; ++tries) {
+                const long long delta = (long long) free_vram() - (long long) before;
+                if (delta > best) best = delta;
+                if (best + (8ll << 20) >= (64ll << 20)) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            }
+            return best < 0 ? 0u : (size_t) best;
+        }();
         if (freed + (8u << 20) < (size_t) (64ll << 20)) {   // ~64 MiB back to the driver (WDDM rounds a little)
             std::fprintf(stderr, "freed %zu bytes\n", freed);
             return fail("VRAM not given back");

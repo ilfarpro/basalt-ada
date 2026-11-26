@@ -4,6 +4,7 @@
 // cp.async path of prefill::fp4::run.  Exit 77 without a GPU.
 #include "basalt/kernels/nvfp4_planes.hpp"
 #include "basalt/prefill/fp4_dense.hpp"
+#include "basalt/core/cuda_cc.hpp"
 #include "basalt/prefill/moe_fp4.hpp"
 
 #include <cuda_runtime.h>
@@ -118,6 +119,10 @@ int bench();
 int main(int argc, char** argv) {
     int ndev = 0;
     if (cudaGetDeviceCount(&ndev) != cudaSuccess || ndev == 0) return 77;
+    if (basalt::core::kCudaCC < 120) {   // fp4_dense.cu: the kind::mxf4nvf4 path is Blackwell's
+        std::printf("fp4_dense_tma_test: the NVFP4 dense prefill is not built for an sm_%d target\n", basalt::core::kCudaCC);
+        return 77;
+    }
     if (argc > 1 && std::strcmp(argv[1], "--bench") == 0) return bench();
 
     const int64_t R = 512, K = 1280, T = 1100, T2 = 1000;   // R a multiple of 256: the SwiGLU output is quantized again

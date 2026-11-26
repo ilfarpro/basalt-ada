@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Basalt is a local inference engine built for NVIDIA Blackwell (sm_120) on Linux and Windows x64. A model runs on one Blackwell GPU, optionally with more GPUs as peer expert tiers, and, for the mixture-of-experts models, system RAM holding the rest (a dense model runs fully on one GPU). The C++/CUDA engine is in `src/` and `include/`, each model's own code under `src/models/<model>`, and the Python server with an OpenAI- and Anthropic-compatible API is in `serve/`.
+Basalt is a local inference engine built for NVIDIA Blackwell (sm_120) and Ada Lovelace (sm_89) on Linux and Windows x64. A model runs on one Blackwell or Ada GPU, optionally with more GPUs as peer expert tiers, and, for the mixture-of-experts models, system RAM holding the rest (a dense model runs fully on one GPU). The C++/CUDA engine is in `src/` and `include/`, each model's own code under `src/models/<model>`, and the Python server with an OpenAI- and Anthropic-compatible API is in `serve/`.
 
 ## Rules
 
@@ -9,6 +9,8 @@ Basalt is a local inference engine built for NVIDIA Blackwell (sm_120) on Linux 
 - **Design the end state first.** Before writing code, design the architecture properly and read similar code. If a model already implements the feature, reuse that logic or make it shared. Do not propose features or improvements before testing them and checking the architecture.
 - **Flag odd numbers.** Sanity-check every result before reporting it (size against speed, run-to-run spread, earlier numbers) and report anything odd with its suspected cause.
 - **Read before answering.** Check the code, docs and existing results before stating a fact about Basalt.
+- **Track planned work in [PLAN.md](PLAN.md).** It holds the current plan of scheduled work; read it before picking up a task and keep it current as plans change.
+- **Ada (sm_89) optimization work: benchmark results live in [docs/ada-optimizations.md](docs/ada-optimizations.md).** Every claimed speedup on an Ada main card records its before/after there; read it before measuring, and add a row after.
 - **No amends, no force-pushes.** Always make new commits.
 - **Don't push or publish anywhere** (GitHub, HF, any remote) without the user's approval.
 - **Don't write tools nobody asked for.**

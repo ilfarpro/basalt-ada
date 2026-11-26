@@ -24,6 +24,8 @@
 #include "basalt/artifact/gguf_reader.hpp"
 #include "basalt/ggml/ggml.h"
 #include "basalt/models/qwen4exp/kernels/dec_moe.hpp"
+#include "basalt/core/cuda_cc.hpp"
+#include "basalt/platform/compiler.hpp"
 #include "basalt/kernels/elementwise.hpp"
 #include "basalt/kernels/iq_kernels.hpp"
 #include "basalt/models/qwen4exp/kernels/native_moe.hpp"
@@ -583,6 +585,12 @@ int main(int argc, char** argv) {
         while (std::getline(ss, t, ',')) layers.push_back(std::atoi(t.c_str()));
     }
     const bool nvfp4 = std::strcmp(argv[1], "--nvfp4") == 0, kq = std::strcmp(argv[1], "--kq") == 0;
+    // NVFP4 expert rows decode on the block-scaled tensor cores, whose kernels an sm_89 build does not compile
+    // (the same refusal the runtime gate gives a pack); an older target's build never sees the format.
+    if (nvfp4 && basalt::core::kCudaCC < 120) {
+        std::printf("dec_moe_parity: NVFP4 experts are not built for an sm_%d target\n", basalt::core::kCudaCC);
+        return 77;
+    }
     const bool synth = nvfp4 || kq;
     std::unique_ptr<basalt::GgufFile> gguf_p;
     if (!synth) gguf_p = std::make_unique<basalt::GgufFile>(argv[1]);
@@ -791,7 +799,7 @@ int main(int argc, char** argv) {
             ck(cudaMemcpy(d_w, w.data(), n * 4, cudaMemcpyHostToDevice), "w");
             ck(cudaMemcpy(d_sh, sh.data(), sh.size() * 4, cudaMemcpyHostToDevice), "sh");
             std::memcpy(h_cpu, cpu.data(), cpu.size() * 4);
-            std::memcpy(h_peer, peer.data(), peer.size() * 4);
+            basalt::platform::copy_f32_nt(h_peer, peer.data(), peer.size());
             std::memset(h_words, 0, 256);
             K::DmRouteArgs ra;
             ra.ids = d_ids; ra.x = dv[0].x; ra.n_tok = T; ra.k = (int) KK; ra.n_embd = (int) H; ra.n_expert = (int) NE;
@@ -929,10 +937,9 @@ int main(int argc, char** argv) {
                 const unsigned prev = 5;
                 ck(cudaMemcpy(d_seen, &prev, 4, cudaMemcpyHostToDevice), "seen");
                 const uint32_t tagw = K::dec_moe_tag_word();
-                for (int i = 0; i < n; ++i)
-                    if (kind[i] == 2)
-                        for (int c = 0; c < (int) H; ++c)
-                            if (late) std::memcpy(h_peer + (size_t) i * H + c, &tagw, 4);
+                if (late)   // unwritten again: the combine puts these words back after reading the rows
+                    for (int i = 0; i < n; ++i)
+                        if (kind[i] == 2) basalt::platform::fill_u32_nt(h_peer + (size_t) i * H, H, tagw);
                 *(volatile uint32_t*) (h_words + 32) = late ? 5u : 6u;
                 *(volatile uint32_t*) (h_words + 48) = late ? 5u : 6u;
                 std::atomic_thread_fence(std::memory_order_seq_cst);
@@ -941,7 +948,7 @@ int main(int argc, char** argv) {
                 if (late) {   // the peer's rows land, then the pool's word
                     std::this_thread::sleep_for(std::chrono::milliseconds(2));
                     for (int i = 0; i < n; ++i)
-                        if (kind[i] == 2) std::memcpy(h_peer + (size_t) i * H, peer.data() + (size_t) i * H, H * 4);
+                        if (kind[i] == 2) basalt::platform::copy_f32_nt(h_peer + (size_t) i * H, peer.data() + (size_t) i * H, H);
                     std::atomic_thread_fence(std::memory_order_seq_cst);
                     *(volatile uint32_t*) (h_words + 32) = 6u;
                     std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -962,7 +969,7 @@ int main(int argc, char** argv) {
                         std::memcpy(&u, r + c, 4);
                         nd4 += u != tagw;
                     }
-                    std::memcpy(r, peer.data() + (size_t) i * H, H * 4);   // for the cases below
+                    basalt::platform::copy_f32_nt(r, peer.data() + (size_t) i * H, H);   // for the cases below
                 }
                 std::snprintf(what, sizeof what, "combine, own wait%s T=%d", late ? " (landing late)" : "", T);
                 report(what, l, nd4, a.size());
@@ -973,7 +980,7 @@ int main(int argc, char** argv) {
                     float best = 1e30f;
                     for (int rep = 0; rep < 25; ++rep) {
                         for (int i = 0; i < n; ++i)
-                            if (kind[i] == 2) std::memcpy(h_peer + (size_t) i * H, peer.data() + (size_t) i * H, H * 4);
+                            if (kind[i] == 2) basalt::platform::copy_f32_nt(h_peer + (size_t) i * H, peer.data() + (size_t) i * H, H);
                         ck(cudaMemcpy(d_seen, &prev, 4, cudaMemcpyHostToDevice), "seen");
                         std::atomic_thread_fence(std::memory_order_seq_cst);
                         cudaEventRecord(b0, s0);
@@ -990,7 +997,7 @@ int main(int argc, char** argv) {
                     cudaEventDestroy(b0);
                     cudaEventDestroy(b1);
                     for (int i = 0; i < n; ++i)
-                        if (kind[i] == 2) std::memcpy(h_peer + (size_t) i * H, peer.data() + (size_t) i * H, H * 4);
+                        if (kind[i] == 2) basalt::platform::copy_f32_nt(h_peer + (size_t) i * H, peer.data() + (size_t) i * H, H);
                 }
                 cudaFree(d_bo4);
                 cudaFree(d_seen);
@@ -1032,7 +1039,7 @@ int main(int argc, char** argv) {
                                                h_words + 48, 6, s0, false, nullptr, nullptr, nullptr, gp);
                         ck(cudaStreamSynchronize(s0), "gated combine");
                         for (int i = 0; i < n; ++i)   // the own-wait variant leaves the tag word in the peer rows it read
-                            if (kind[i] == 2) std::memcpy(h_peer + (size_t) i * H, peer.data() + (size_t) i * H, H * 4);
+                            if (kind[i] == 2) basalt::platform::copy_f32_nt(h_peer + (size_t) i * H, peer.data() + (size_t) i * H, H);
                     }
                     const auto c0 = down(d_b0, (size_t) T * H), c1 = down(d_b1, (size_t) T * H);
                     size_t ndg = 0;
@@ -1539,18 +1546,18 @@ int main(int argc, char** argv) {
                 for (int tagged = 0; tagged < 2; ++tagged) {
                     const volatile uint32_t* td = tagged ? h_words + 32 : nullptr;
                     h_words[32] = 7;
-                    std::memcpy(h_peer, peer.data(), peer.size() * 4);
+                    basalt::platform::copy_f32_nt(h_peer, peer.data(), peer.size());
                     K::dec_moe_combine(d_parts, h_peer, h_cpu, d_plan, d_w, d_sh, d_ba, H, KK, T, nullptr, nullptr, 7, s0,
                                        tagged != 0, td);
                     ck(cudaStreamSynchronize(s0), "combine, further peers");
-                    std::memcpy(h_peer, peer.data(), peer.size() * 4);
+                    basalt::platform::copy_f32_nt(h_peer, peer.data(), peer.size());
                     K::dec_moe_combine(d_parts, h_peer, h_cpu, d_po, d_w, d_sh, d_bb, H, KK, T, nullptr, nullptr, 7, s0,
                                        tagged != 0, td);
                     ck(cudaStreamSynchronize(s0), "combine, one peer");
                     const auto ca = down(d_ba, (size_t) T * H), cb = down(d_bb, (size_t) T * H);
                     for (size_t i = 0; i < ca.size(); ++i) b4 += std::memcmp(&ca[i], &cb[i], 4) != 0;
                 }
-                std::memcpy(h_peer, peer.data(), peer.size() * 4);
+                basalt::platform::copy_f32_nt(h_peer, peer.data(), peer.size());
                 std::snprintf(what, sizeof what, "combine, peers T=%d", T);
                 report(what, l, b4, (size_t) 2 * T * H);
                 cudaFree(d_ba); cudaFree(d_bb); cudaFree(d_po); cudaFree(d_rr0); cudaFree(d_rx0); cudaFree(d_rx1);

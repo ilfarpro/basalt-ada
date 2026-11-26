@@ -1,12 +1,13 @@
 # Platforms
 
-Linux x64 and Windows x64 with NVIDIA Blackwell (sm_120), and Linux Arm64 with the integrated Blackwell GPU (sm_121) of the DGX
+Linux x64 and Windows x64 with an NVIDIA Blackwell (sm_120) or Ada Lovelace (sm_89) GPU, and Linux Arm64 with the integrated Blackwell GPU (sm_121) of the DGX
 Spark, described in [arm64](arm64.md). Linux x64 is where the engine is tested and benchmarked. CI builds all three and runs the
 CPU tests on each. The GPU tests and the quality gate need a card.
 
-The main card is always sm_120, with one exception in the multi-GPU tier: when built with `-DPEER_ADA=ON`, a second card of sm_89 (Ada) can be a Flash-Next peer that holds and
-computes experts (`gpu-mode peer`, [GPUs](configuration/gpus.md#an-older-peer-card)); every other path and every other
-architecture is Blackwell-only.
+The main card is sm_120 (Blackwell) or sm_89 (Ada Lovelace). In the multi-GPU tier a second card of the other discrete capability
+can be a Flash-Next peer that holds and computes experts for the main card: sm_89 (Ada) beside a Blackwell main card when built
+with `-DPEER_ADA=ON`, or sm_120 (Blackwell) beside an Ada main card when built with `-DPEER_BLACKWELL=ON` (`gpu-mode peer`,
+[GPUs](configuration/gpus.md#a-peer-card-of-the-other-capability)). No other NVIDIA architecture runs any path.
 
 | | Linux | Windows | Linux Arm64 |
 | --- | --- | --- | --- |
@@ -101,7 +102,8 @@ ctest --test-dir build -L cpu -j 8 --output-on-failure
 
 The executables land in `bin/` whatever the generator is (a Visual Studio generator would otherwise put them in `bin/Release`, away from `data/`).
 
-`-DBASALT_MODELS` is required here as everywhere: `all`, or the ids of the models you want ([building](building.md#building-only-some-models)).
+`-DBASALT_MODELS` takes `all`, or the ids of the models you want; left out it defaults to `all`, or to `qwen4exp` on a
+`89` build ([building](building.md#building-only-some-models)).
 
 If tests fail to create fixtures, point `TEMP` and `TMP` into the build tree. CUDA 13.2+ headers need `/Zc:preprocessor`; the CMakeLists
 passes it to nvcc's host compiler.

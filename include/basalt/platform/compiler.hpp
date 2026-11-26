@@ -6,6 +6,7 @@
 // so shared code may ask them and take its "the CPU has none of this" path.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #if defined(__x86_64__) || defined(_M_X64)
@@ -114,6 +115,41 @@ inline void store_fence() {
     __dmb(_ARM64_BARRIER_ISHST);
 #else
     __asm__ volatile("dmb ishst" ::: "memory");
+#endif
+}
+
+/// A fill of, or copy into, page-locked RAM a GPU agent both reads and writes back later (the dec_moe tag rows: a
+/// combine restores the tag word into a peer's row after reading it). A plain store leaves the line dirty in the
+/// CPU's caches, and its write-back lands whenever the caches feel like it - after the GPU's own store to the same
+/// line, overwriting it. A GeForce RTX 4080 SUPER lost a re-armed tag word this way in most of the rows that landed
+/// while its combine was waiting; with these stores, none. Non-temporal stores leave no line behind (and `sfence`
+/// makes them land in RAM before an arrival word the caller raises after); the Arm64 boards this runs on map their
+/// RAM coherent for both sides and need nothing. Sizes are the protocol's: whole 4-byte words of a page-locked row.
+inline void fill_u32_nt(void* dst, size_t words, uint32_t v) {
+#if defined(BASALT_ARCH_X86)
+    char* d = (char*) dst;
+    const __m128i w = _mm_set1_epi32((int) v);
+    while (((uintptr_t) d & 15u) != 0u && words != 0u) { _mm_stream_si32((int*) d, (int) v); d += 4; --words; }
+    while (words >= 4u) { _mm_stream_si128((__m128i*) d, w); d += 16; words -= 4u; }
+    for (; words != 0u; --words, d += 4) _mm_stream_si32((int*) d, (int) v);
+    _mm_sfence();
+#else
+    volatile uint32_t* w = (volatile uint32_t*) dst;
+    for (size_t i = 0; i < words; ++i) w[i] = v;
+#endif
+}
+
+/// The same for a row's bytes coming from a buffer: see `fill_u32_nt`.
+inline void copy_f32_nt(float* dst, const float* src, size_t n) {
+#if defined(BASALT_ARCH_X86)
+    char* d = (char*) dst;
+    while (((uintptr_t) d & 15u) != 0u && n != 0u) { _mm_stream_si32((int*) d, *(const int*) src); d += 4; ++src; --n; }
+    while (n >= 4u) { _mm_stream_ps((float*) d, _mm_loadu_ps(src)); d += 16; src += 4; n -= 4u; }
+    for (; n != 0u; --n, d += 4, ++src) _mm_stream_si32((int*) d, *(const int*) src);
+    _mm_sfence();
+#else
+    volatile float* d = (volatile float*) dst;
+    for (size_t i = 0; i < n; ++i) d[i] = src[i];
 #endif
 }
 

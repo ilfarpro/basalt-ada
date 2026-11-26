@@ -92,10 +92,20 @@ __device__ __forceinline__ unsigned s8x2_bf16(unsigned x) {
     asm("cvt.rn.bf16x2.f32 %0, %1, %2;" : "=r"(h) : "f"(f1), "f"(f0));
     return h;
 }
+/// a bf16x2 times a bf16x2, rounded.  `mul.rn.bf16x2` needs sm_90; sm_89 multiplies the halves in f32, where the
+/// product of two 8-bit mantissas is exact, and rounds once on the way back: the same bits (narrow_bf16_parity).
 __device__ __forceinline__ unsigned bf16x2_mul(unsigned a, unsigned b) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
     unsigned d;
     asm("mul.rn.bf16x2 %0, %1, %2;" : "=r"(d) : "r"(a), "r"(b));
     return d;
+#else
+    const float a0 = __uint_as_float(a << 16), a1 = __uint_as_float(a & 0xffff0000u);
+    const float b0 = __uint_as_float(b << 16), b1 = __uint_as_float(b & 0xffff0000u);
+    unsigned d;
+    asm("cvt.rn.bf16x2.f32 %0, %1, %2;" : "=r"(d) : "f"(__fmul_rn(a1, b1)), "f"(__fmul_rn(a0, b0)));
+    return d;
+#endif
 }
 __device__ __forceinline__ uint4 ld_nc16(const void* p) {
     uint4 v;

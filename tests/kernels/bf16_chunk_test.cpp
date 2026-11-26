@@ -8,6 +8,7 @@
 #include "basalt/kernels/gqa_attn.hpp"
 #include "basalt/prefill/fp4_dense.hpp"
 #include "basalt/prefill/fp8_gemm.hpp"
+#include "basalt/core/cuda_cc.hpp"
 
 #include <cuda_runtime.h>
 
@@ -98,6 +99,10 @@ bool report(const char* what, bool same) {
 int main() {
     int ndev = 0;
     if (cudaGetDeviceCount(&ndev) != cudaSuccess || ndev == 0) return 77;
+    if (basalt::core::kCudaCC < 120) {   // fp8_gemm.cu and fp4_dense.cu: the block-scaled paths are Blackwell's
+        std::printf("bf16_chunk_test: the FP8 prefill is not built for an sm_%d target\n", basalt::core::kCudaCC);
+        return 77;
+    }
     bool ok = true;
     const int64_t T = 300, H = 5120;
     std::vector<uint16_t> xb;

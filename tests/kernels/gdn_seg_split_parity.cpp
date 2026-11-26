@@ -119,7 +119,7 @@ void run(const Geo& g, const std::vector<int>& seg, bool use_dst, GdnGate gate, 
     for (int p = 0; p < 2; ++p) {
         DecRecArgs b = a;
         b.h = o[p].h; b.gate = o[p].gate; b.beta = o[p].beta; b.y = o[p].y; b.y16 = o[p].y16; b.yq = o[p].yq;
-        if (p == 0) dec_gdn_rec_seg(b, d_rows, 0, (int) seg.size(), max_n, S0, dd[0]);
+        if (p == 0) dec_gdn_rec_seg(b, d_rows, 0, (int) seg.size(), max_n, rows, S0, dd[0]);
         else {
             b.o = o[p].o;
             dec_gdn_gates(b, rows, gates, S0);

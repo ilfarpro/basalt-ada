@@ -74,6 +74,7 @@ GpuChoice choose_gpus(const GpuSpec& spec, GpuMode mode, const std::string& shar
 struct GpuModes {
     int peer = 0, split = 0, tensor = 0;
     bool peer_ada = false;          ///< its peers' kernels are among those a -DPEER_ADA=ON build compiles for sm_89
+    bool peer_blackwell = false;    ///< its peers' kernels are among those a -DPEER_BLACKWELL=ON Ada build compiles for sm_120
 };
 
 /// Empty when `model` runs the choice's mode on that many cards of `visible`; else the refusal naming the model and the

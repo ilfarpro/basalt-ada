@@ -56,6 +56,18 @@ bool has_device() {
     return true;
 }
 
+// Whether the card can take a fixture of this many bytes right now: a card whose memory a running engine holds
+// entirely gives the device cases the skip rather than a run on failed allocations.
+bool device_room(uint64_t bytes) {
+    void* p = nullptr;
+    if (cudaMalloc(&p, bytes) != cudaSuccess) {
+        (void) cudaGetLastError();
+        return false;
+    }
+    cudaFree(p);
+    return true;
+}
+
 // ranges at every kind of offset and length, into one host buffer each
 void host_ranges(const TestFile& f, int threads) {
     struct R { uint64_t off, len; };
@@ -253,7 +265,7 @@ void bf16_blocks(Conv conv) {
     }
     check(conv_out_bytes(conv, n * 2) == want.size(), q8 ? "q8_0 output bytes" : "q4_0 output bytes");
     for (const bool to_dev : {false, true}) {
-        if (to_dev && !has_device()) continue;
+        if (to_dev && (!has_device() || !device_room(want.size()))) continue;   // a full card skips like no device does
         std::vector<uint8_t> got(want.size());
         void* dev = nullptr;
         if (to_dev && cudaMalloc(&dev, got.size()) != cudaSuccess) {
@@ -545,6 +557,12 @@ void device(const TestFile& f) {
         std::printf("loader_test: no CUDA device, the device cases are not run\n");
         return;
     }
+    // the cases below want their fixtures on the card: a card whose memory a running engine holds entirely is
+    // the same skip, which keeps this cpu-labelled test honest beside a busy machine
+    if (!device_room(224u << 20)) {
+        std::printf("loader_test: no room on the device, the device cases are not run\n");
+        return;
+    }
     {   // more pieces than workers: the staging slots are reused and each copy is waited for before its slot is read into
         for (int threads : {1, 2}) {
             constexpr uint64_t kItems = 24, kLen = (5u << 20) + 123;
@@ -720,6 +738,10 @@ void device(const TestFile& f) {
 void cards_first(const TestFile& f) {
     if (!has_device()) return;
     constexpr uint64_t kLen = 16u << 20;   // one staging piece each: every placement is a line of the bar
+    if (!device_room(kLen)) {   // the fixture wants kLen on the card; a full card is the skip (the bar capture owns stderr)
+        std::printf("loader_test: no room on the device, the cards-first case is not run\n");
+        return;
+    }
     void* d = nullptr;
     uint8_t* h = (uint8_t*) basalt::platform::alloc_aligned(kLen, 4096);
     check(cudaMalloc(&d, kLen) == cudaSuccess && h != nullptr, "cards first: buffers");

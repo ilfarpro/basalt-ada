@@ -14,8 +14,10 @@ in `basalt` itself, in `basalt-bench` and in `basalt-probe`.
 
 - Cards are numbered as `nvidia-smi` numbers them. The first card listed is the main card; `all` is every visible card in order, so
   GPU 0 is the main card. When `CUDA_VISIBLE_DEVICES` is set, the numbers count within its list.
-- The main card must be Blackwell (sm_120). A later card must be sm_120 too, except a peer card of sm_89 (Ada) in a build with
-  `-DPEER_ADA=ON` ([older peer card](#an-older-peer-card)).
+- The main card must be the build's capability: Blackwell (sm_120, or sm_121 integrated) or Ada (sm_89). A later card must be that
+  capability too, except a peer card of the other discrete one in a cross-capability build: sm_89 beside an sm_120 main card with
+  `-DPEER_ADA=ON`, or sm_120 beside an sm_89 main card with `-DPEER_BLACKWELL=ON`
+  ([peer card of the other capability](#a-peer-card-of-the-other-capability)).
 - A number past the visible cards or a card listed twice stops the start with an error.
 - **Idle cards:** with `gpu` unset and more cards visible, every model warns once at start (`GPU 1 (RTX 5060 Ti) unused; to use
   more cards set gpu (0,1 or all) and gpu-mode`), in the CLI, the server and the bench. It is a warning, not an error. Naming a
@@ -121,18 +123,22 @@ engine sizes the second card to leave room for its prompt buffers (about 200 MiB
 600 MiB, at least 128). If the start prints `prefill peer: the peer's buffers do not fit`, raise `peer-reserve-mib` (a display or
 another program may be using the card) and its experts shrink by the same amount. `peer GPU 1: N experts` says how many it holds.
 
-## An older peer card
+## A peer card of the other capability
 
-One older architecture can be built for the peer's kernels: sm_89 (Ada), beside an sm_120 main card, with the `-DPEER_ADA=ON` build
-flag (off by default to keep build times down). Without it, or for any other pre-Blackwell card, the card is refused at the start.
-What such a peer does:
+The peer's kernels can be built for the other discrete capability too: sm_89 (Ada) beside an sm_120 main card with the
+`-DPEER_ADA=ON` build flag, or sm_120 (Blackwell) beside an sm_89 (Ada) main card with `-DPEER_BLACKWELL=ON` (each off by default
+to keep build times down; the flags name opposite directions and one build takes at most one). Without the flag, or for any other
+capability, the card is refused at the start with the flag's name in the reason. What such a peer does:
 
 - It holds experts and computes their rows in every decode window with the standard-CUDA kernels (Q8_1/Q2_0 and the GGUF i-quant
   rows, dp4a arithmetic). It reads its experts' share of a prompt chunk under the slower-card rule (chunks up to 2,559 rows).
-- It does not run the main card's work: the dense weights, the KV cache, the drafter, TMA and the FP4 tensor-core expert kernels stay
-  on the Blackwell card, so an NVFP4 pack's FP4 experts are main-card only.
-- Only Flash-Next's peer kernels are built for it; the other models refuse an sm_89 card. Split and tensor need sm_120 cards
-  (`gpu-mode split: GPU 1 (RTX 4060 Ti) is sm_89; split and tensor run on sm_120 cards`).
+- It does not run the main card's work: the dense weights, the KV cache, the drafter, TMA and the FP4 tensor-core expert kernels
+  stay on the main card, so an NVFP4 pack's FP4 experts are main-card only.
+- Only Flash-Next's peer kernels are built for the other capability; the other models refuse such a card. Split and tensor need
+  the main card's capability (`gpu-mode split: GPU 1 (RTX 4060 Ti) is sm_89; split and tensor run on sm_120 cards`).
+
+The rules care about the two cards' speeds, not which capability each one is: the slower card gets no GDN or head share and no
+prompt part outside the routed-only rule, in either direction.
 
 Three or more cards are community-tested: the path is checked on two cards. Reports from machines with three or four cards are
 welcome ([community](../community.md)).

@@ -8,9 +8,36 @@ logs/
 __pycache__/
 .pytest_cache/
 *.pyc
+.ruff_cache/
+.mypy_cache/
 /.venv/
 /models/
 /packs/
 /mtp/
+# the engine's own run configs are written where its binary ran
+/config/
 /.ccache/
 .DS_Store
+
+# cmake or ctest run from the checkout itself (the builds live in their own directories)
+/CMakeCache.txt
+/CMakeFiles/
+/CTestTestfile.cmake
+/CTestConfiguration.ini
+/DartConfiguration.tcl
+/cmake_install.cmake
+/Testing/
+/compile_commands.json
+# a crash's files land where the process ran
+/core
+/core.*
+*.core
+/vgcore.*
+/perf.data
+/gmon.out
+# editors and patches
+*.swp
+*~
+*.orig
+*.rej
+.vscode/

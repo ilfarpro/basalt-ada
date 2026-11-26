@@ -300,6 +300,9 @@ void win_gdn(Model& m, SessionState& st, const Layer& L, int gi, int T, cudaStre
     a.gate = st.rec_gate + (size_t) gi * kWindow * g.gdn_v_heads;
     a.beta = st.rec_beta + (size_t) gi * kWindow * g.gdn_v_heads;
     if (on_wg(L.out.type)) a.y16 = (uint16_t*) b.xq;   // the out product's rows
+    // the raw output in b.y, normed there in place (batch_gdn's rule): a build without clusters runs the split
+    // family, which writes it before the norm; a Blackwell one ignores it
+    a.o = b.y;
     if (T == 1 && st.gdn_alt) a.state_out = st.gdn_alt + (size_t) gi * st.gdn_floats;   // the state after the row
     kernels::dec_gdn_rec(a, T, s);
     prod_add(m, L.out, on_wg(L.out.type) ? b.xq : wact(m, b.y, L.out.type, g.value_width(), T, s), b.x, T, s);

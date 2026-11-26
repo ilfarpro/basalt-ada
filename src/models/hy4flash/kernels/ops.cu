@@ -1,11 +1,14 @@
 // src/models/hy4flash/kernels/ops.cu - the sigmoid gate, small products, the stream fill and the Engram apply of
 // Hy4-flash.
 #include "basalt/models/hy4flash/kernels.hpp"
+#include "basalt/kernels/l2_pf.cuh"
 
 #include <cuda_runtime.h>
 
 #include <cstring>
 #include <stdexcept>
+
+namespace bk = basalt::kernels;
 
 namespace basalt::models::hy4flash {
 namespace {
@@ -96,7 +99,7 @@ __device__ void l2_read_ahead_block(const L2Ranges& r, uint32_t* mark, uint32_t 
             }
             const uint64_t take = min(min(o1 - o, r.n[i] - ro), (uint64_t) 32768);
             const char* src = (const char*) r.p[i] + ro;
-            asm volatile("cp.async.bulk.prefetch.L2.global [%0], %1;" ::"l"(src), "r"((unsigned) take) : "memory");
+            bk::pf_l2(src, take);
             last = src + take - 16;
             o += take;
         }

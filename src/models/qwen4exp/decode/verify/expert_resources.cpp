@@ -135,7 +135,7 @@ bool Verifier::dm_init(std::string& err) {
              cudaMemset(d->pscr, 0, dec_moe_peer_scratch_bytes((int) N, (int) lay.fmt[0].n_ff)) == cudaSuccess &&
              cudaMalloc((void**) &d->parr, 64) == cudaSuccess;
         d->tag = true;
-        for (size_t i = 0; i < d->rows_words; ++i) ((volatile uint32_t*) d->h_rows)[i] = basalt::kernels::dec_moe_tag_word();
+        basalt::platform::fill_u32_nt(d->h_rows, d->rows_words, basalt::kernels::dec_moe_tag_word());
         if (!ok) { err = "verify: device-planned MoE peer buffers"; return false; }
         d->shadow1.assign((size_t) LE, INT32_MIN);
         if (!router_ok || !warm_router(rq_h, rs_h, &d->rq, &d->rs))

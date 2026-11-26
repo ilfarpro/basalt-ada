@@ -15,10 +15,20 @@ The build fetches nothing. The ggml and llama.cpp parts Basalt uses (quantizatio
 
 `-DWERROR=ON` makes project warnings errors (CI sets it on Linux).
 
+## Building for an Ada main card
+
+One compute capability per build: `CMAKE_CUDA_ARCHITECTURES` defaults to 120 (121 on Arm64). An Ada build is
+a decision, not a default: `cmake -S . -B build -DCMAKE_CUDA_ARCHITECTURES=89`. It compiles without the FP4 /
+block-scaled tensor-core paths (a native NVFP4 pack is refused at the start of the run, before any allocation;
+the 120a-only prefill bodies stay only as their named refusals) and narrows the models default to `qwen4exp`,
+the one model an Ada main card serves today. The measured Ada series and every optimization's before/after
+live in [Ada optimizations](ada-optimizations.md); the CI job `build-ada-main` builds 89 and runs its CPU tests.
+
 ## Building only some models
 
 `-DBASALT_MODELS=<ids>` is a semicolon list of architecture ids, or `all`, which builds every model and follows the
-models a later version adds. The option is required: a configure that leaves it out stops and says so. A model left out is not compiled at
+models a later version adds. Left out, it defaults to the card: `qwen4exp` on an Ada (89) build, `all` on every other.
+A model left out is not compiled at
 all: its C++ and CUDA sources, its kernels and its tests are skipped, which is most of the build time for DeepSeek.
 
 | Model | Id |

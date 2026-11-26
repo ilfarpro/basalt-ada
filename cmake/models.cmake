@@ -5,15 +5,26 @@
 # Every model that ships: the architecture ids, as `general.architecture` names them.
 set(BASALT_BUILTIN_MODELS qwen4exp deepseek41 qwen35 hy4flash inkling2)
 
-# BASALT_MODELS is required, with no default: a configure that leaves it out stops and says how to set it. "all" follows
-# BASALT_BUILTIN_MODELS, so a build folder picks up a model added later. The cache keeps the word, not the list: a list
-# would stay in the folder and leave every newer model out. A folder that already holds a value keeps it.
-set(BASALT_MODELS "" CACHE STRING
-    "Models to build (required): all, or a semicolon list from: ${BASALT_BUILTIN_MODELS}")
+# The default follows the card: an Ada (89) build starts from qwen4exp alone, it is the one model an Ada main card
+# serves today (the others need the work of PLAN.md's "Later Ada work"); name one on the command line to build it and
+# take responsibility for it.  Everywhere else the default is "all", which follows BASALT_BUILTIN_MODELS, so a build
+# folder picks up a model added later.  The cache keeps the word, not the list: a list written as the default would stay
+# in the folder and leave every newer model out.  A folder that already holds a value keeps it.
+if(BASALT_CUDA_CC STREQUAL "89")
+  set(_basalt_models_default "qwen4exp")
+else()
+  set(_basalt_models_default "all")
+endif()
+set(BASALT_MODELS "${_basalt_models_default}" CACHE STRING
+    "Models to build: all, or a semicolon list from: ${BASALT_BUILTIN_MODELS}")
 string(REPLACE ";" ", " _basalt_valid "${BASALT_BUILTIN_MODELS}")
 if(NOT BASALT_MODELS)
-  message(FATAL_ERROR "BASALT_MODELS is not set: pass -DBASALT_MODELS=all to build every model, or a semicolon list "
-                      "from: ${_basalt_valid} (quote the list, as in \"-DBASALT_MODELS=qwen4exp;deepseek41\")")
+  message(FATAL_ERROR "BASALT_MODELS is empty: say all or name at least one of ${_basalt_valid}")
+endif()
+# A folder configured before "all" holds the list that was then the default (0.4.x): it meant every model.
+if(BASALT_MODELS STREQUAL "qwen4exp;deepseek41;qwen35")
+  message(STATUS "basalt: BASALT_MODELS held 0.4's default list (every model then); it is now 'all'")
+  set(BASALT_MODELS "all" CACHE STRING "Models to build: all, or a semicolon list from: ${BASALT_BUILTIN_MODELS}" FORCE)
 endif()
 # The resolved list, as a normal variable over the cache entry for the rest of the configure.
 if(BASALT_MODELS STREQUAL "all")

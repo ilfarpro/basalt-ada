@@ -171,14 +171,17 @@ std::string arch_name(const GpuCard& c) { return "sm_" + std::to_string(c.cc_maj
 
 // The main GPU runs the model's decode kernels (NVFP4 tensor cores, Blackwell instructions) — this build's compute capability only.
 // A peer GPU runs only the expert tier's standard CUDA kernels (Q8_1/Q2_0 rows, shared-memory rings,
-// doorbells), which a build with -DPEER_ADA=ON also compiles for sm_89 (Ada).
+// doorbells), which a build with -DPEER_ADA=ON also compiles for sm_89 (Ada) and an sm_89 build with
+// -DPEER_BLACKWELL=ON also compiles for sm_120 (Blackwell).
 bool gpu_main_supported(const GpuCard& c) { return c.cc_major == 0 || core::cuda_cc_is_ours(c.cc_major, c.cc_minor); }
-// sm_89 (Ada) is the one older architecture the peer kernels can be compiled for (when built with PEER_ADA);
-// a peer card of any other pre-Blackwell arch (or an sm_89 card without PEER_ADA) is rejected here
+// sm_89 and sm_120 are the cross-capability peer arches the peer kernels can be compiled for, each in the other
+// capability's build; a peer card of any other capability (or one whose flag is off) is rejected here
 // rather than failing later with 'no kernel image' at the first peer launch.
 bool gpu_peer_supported(const GpuCard& c) {
 #if defined(BASALT_PEER_ADA)
     return c.cc_major == 0 || core::cuda_cc_is_ours(c.cc_major, c.cc_minor) || (c.cc_major == 8 && c.cc_minor == 9);
+#elif defined(BASALT_PEER_BLACKWELL)
+    return c.cc_major == 0 || core::cuda_cc_is_ours(c.cc_major, c.cc_minor) || (c.cc_major == 12 && c.cc_minor == 0);
 #else
     return c.cc_major == 0 || core::cuda_cc_is_ours(c.cc_major, c.cc_minor);
 #endif
@@ -258,18 +261,22 @@ GpuChoice choose_gpus(const GpuSpec& spec, GpuMode mode, const std::string& shar
         for (double v : shares) sum += v;
         for (double v : shares) c.shares.push_back(v / sum);
     }
-    // the cards after the main one: a peer takes this build's capability, or sm_89 in a -DPEER_ADA=ON build; split and tensor this capability only
+    // the cards after the main one: a peer takes this build's capability, sm_89 in a -DPEER_ADA=ON build or sm_120 in a
+    // -DPEER_BLACKWELL=ON Ada build; split and tensor this capability only
     for (size_t idx = 1; known && idx < count; ++idx) {
         const GpuCard& g = visible[(size_t) c.cards[idx]];
         const std::string who = gpu_label(visible, c.cards[idx]);
-        const bool ada = g.cc_major == 8 && g.cc_minor == 9;
+        const bool ada = g.cc_major == 8 && g.cc_minor == 9 && !core::cuda_cc_is_ours(8, 9);   // sm_89 as a foreign arch
+        const bool bw = g.cc_major == 12 && g.cc_minor == 0 && !core::cuda_cc_is_ours(12, 0) && core::kCudaCCMajor == 8;   // sm_120 as a foreign arch
+        const std::string peer_hint = ada ? "peer takes sm_89 in a -DPEER_ADA=ON build"
+                                          : bw ? "peer takes sm_120 in a -DPEER_BLACKWELL=ON build" : "";
         if (mode == GpuMode::Peer) {
             if (!gpu_peer_supported(g))
                 return refuse("gpu-mode peer: " + who + " is " + arch_name(g) +
-                              (ada ? "; peer takes sm_89 in a -DPEER_ADA=ON build" : "; peer runs on " + core::cuda_cc_name() + " cards"));
+                              (peer_hint.empty() ? "; peer runs on " + core::cuda_cc_name() + " cards" : "; " + peer_hint));
         } else if (!gpu_main_supported(g)) {
             return refuse("gpu-mode " + mode_text + ": " + who + " is " + arch_name(g) + "; split and tensor run on " + core::cuda_cc_name() + " cards" +
-                          (ada ? " (peer takes sm_89 in a -DPEER_ADA=ON build)" : ""));
+                          (peer_hint.empty() ? "" : " (" + peer_hint + ")"));
         }
     }
     return c;
@@ -292,11 +299,16 @@ std::string check_gpu_modes(const GpuChoice& c, const std::string& model, const 
         return head + " takes at most " + std::to_string(most) + " cards" +
                (c.mode == GpuMode::Peer ? " (the main card and " + std::to_string(most - 1) + (most == 2 ? " peer)" : " peers)") : std::string()) +
                "; gpu names " + std::to_string(c.cards.size());
-    // an sm_89 peer (a -DPEER_ADA=ON build) runs only the peer kernels that build compiles for it
-    for (size_t i = 1; c.mode == GpuMode::Peer && !m.peer_ada && i < c.cards.size(); ++i) {
+    // a cross-capability peer - sm_89 in a -DPEER_ADA=ON build, sm_120 in a -DPEER_BLACKWELL=ON Ada build - runs
+    // only the peer kernels that build compiles for it, so a model whose peers' kernels are not in that set refuses it
+    for (size_t i = 1; c.mode == GpuMode::Peer && i < c.cards.size(); ++i) {
         const int k = c.cards[i];
-        if (k >= 0 && (size_t) k < visible.size() && visible[(size_t) k].cc_major == 8 && visible[(size_t) k].cc_minor == 9)
-            return "gpu-mode peer: " + gpu_label(visible, k) + " is " + arch_name(visible[(size_t) k]) + "; " + model + " runs peer on " + core::cuda_cc_name() + " cards";
+        if (k < 0 || (size_t) k >= visible.size()) continue;
+        const GpuCard& g = visible[(size_t) k];
+        const bool foreign_ada = g.cc_major == 8 && g.cc_minor == 9 && !core::cuda_cc_is_ours(8, 9);
+        const bool foreign_bw = g.cc_major == 12 && g.cc_minor == 0 && !core::cuda_cc_is_ours(12, 0);
+        if ((foreign_ada && !m.peer_ada) || (foreign_bw && !m.peer_blackwell))
+            return "gpu-mode peer: " + gpu_label(visible, k) + " is " + arch_name(g) + "; " + model + " runs peer on " + core::cuda_cc_name() + " cards";
     }
     return {};
 }
