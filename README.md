@@ -31,8 +31,11 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j                  # bin/basalt, bin/basalt-bench, bin/basalt-probe, bin/basalt-vision
                                         # Windows: add -G Ninja to the first line, from an x64 VS 2022 prompt ([platforms](docs/platforms.md#building-on-windows))
                                         # one model only: -DBASALT_MODELS=qwen4exp, deepseek41, qwen35, hy4flash or inkling2 ([building](docs/building.md#building-only-some-models))
+                                        # an Ada (sm_89) main card: add -DCMAKE_CUDA_ARCHITECTURES=89 to the first line; it serves Qwen3.8-Flash-Next only ([building](docs/building.md#building-for-an-ada-main-card))
+                                        # a peer card of the other capability (a Blackwell build takes -DPEER_ADA=ON, an Ada build -DPEER_BLACKWELL=ON): [GPUs](docs/configuration/gpus.md#a-peer-card-of-the-other-capability)
 pip install -r requirements.txt
 hf download jesdga/Qwen3.8-Flash-Next-Basalt Qwen3.8-FN-NVFP4-DQ6_K.basalt --local-dir models
+                                        # an Ada build has no FP4 tensor cores: take a GGUF-type pack instead, e.g. Qwen3.8-FN-UD-Q4_K_XL.basalt ([pack](docs/models/qwen38-flash-next.md#pack))
 ```
 
 Put the settings in `basalt_config.json`:
