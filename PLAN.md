@@ -181,13 +181,18 @@ new kernel bodies and no kernel source changed.
       up to 2559).  Recorded in `docs/ada-optimizations.md` before the claim, machine's peer slot
       electrically PCIe 4.0 x4 (~6.5-7 GB/s): it moves the expert load at start and row crossings,
       not the steady-state decode math.
-- [ ] The peer's prompt headroom is priced: make `--gpu-mode peer` work on the default reserves.
-      `cache_size.cpp` is short two items - the main card owes the room the prompt's MMQ loads
-      after the cache is sized (modules, stream-k fixup tiles, beside the windows), and the peer
-      card owes the kernels it loads lazily on its first rows (main keeps 96 MiB back for lazy
-      kernels, the peer nothing).  Take the figures from the MMQ failure messages (they now name
-      the ask, the card and the free) and price them where the tier sizes itself; the reserve
-      stays an honest floor.
+- [x] The peer's prompt headroom is priced: `--gpu-mode peer` works on the default reserves.
+      The MMQ failure messages told the story the logs could not: the elastic KV's back-in on the
+      first request strips the main card's free VRAM down to the reserve (by design, it spends the
+      room `free - reserve` and lends the rest from the cache's tail) - but `kv_fit` read the
+      raw asked reserve, while the loader had raised it (128 asked, raised to 224 for the lazy
+      kernel room) and the free line itself had already fallen to 205.  Stripping to 128 left the
+      first MMQ launch, which pays the lazy modules, cuBLAS's first GEMM and the pool's stream-k
+      tiles (measured: ~162 MiB on this machine), 1 MiB.  Fixed: one `kLazyKernelsMib` in the
+      model's options header, the elastic KV now strips only above the reserve as actually
+      charged (`QfnRuntime::elastic_floor_mib`), and the peer card's price holds the same 96 MiB
+      back for the tier kernels it loads lazily on its first rows (measured there: 91 MiB, peer
+      ended at 17 MiB free).  The same strip was a knife-edge one-card serving had outlived.
 
 ## Later Ada work (out of the scope above)
 

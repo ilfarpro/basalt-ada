@@ -15,6 +15,15 @@ int64_t QfnRuntime::cache_floor_slots() {
     return std::min<int64_t>(f, xcache.full_slots());
 }
 
+// The reserve as actually charged: the loader raises a small asked reserve to hold the room the first prompt still
+// loads into it, and that room is the MMQ's - the KV strip stops here, not at the asked figure.  The batch windows
+// follow the loader's raise; the runtime does not know which slot is solo, and staying above them is the safe side.
+int64_t QfnRuntime::elastic_floor_mib() {
+    int64_t owed = kLazyKernelsMib + basalt::program::serve::vram_floor_mib();
+    if (o.batch >= 2) owed += (int64_t) o.batch * kSlotWindowsMib;
+    return std::max<int64_t>(o.vram_reserve_mib, owed);
+}
+
 // The elastic KV's ceiling: the cells all sessions can back together before the expert cache would go below its
 // floor - what they back now, plus what the free VRAM above the reserve and the cache's tail down to the floor pay
 // for (kv_fit's test; past it a request is refused).  -1 without an elastic KV.
@@ -22,7 +31,7 @@ int64_t QfnRuntime::kv_ceiling() {
     if (kv_floor <= 0) return -1;
     size_t free_b = 0, total_b = 0;
     basalt::core::gpu_mem_info(&free_b, &total_b);
-    int64_t spare = std::max<int64_t>(0, (int64_t) free_b - ((int64_t) o.vram_reserve_mib << 20));
+    int64_t spare = std::max<int64_t>(0, (int64_t) free_b - (elastic_floor_mib() << 20));
     if (xcache.segmented()) {
         const int64_t gran = (int64_t) std::max<uint64_t>(basalt::core::vmm::granularity(), 1);
         spare += gran * basalt::program::kv_cache_spare_granules(
@@ -133,7 +142,7 @@ bool QfnRuntime::cache_regrow(std::string& e) {
     if (!xcache.segmented() || xcache.mapped_bytes() >= xcache.full_bytes()) return true;
     size_t free_b = 0, total_b = 0;
     basalt::core::gpu_mem_info(&free_b, &total_b);
-    const int64_t room = (int64_t) free_b - ((int64_t) o.vram_reserve_mib << 20);
+    const int64_t room = (int64_t) free_b - (elastic_floor_mib() << 20);
     if (room <= 0) return true;
     std::string gerr;
     (void) xcache.grow(xcache.mapped_bytes() + room, gerr);   // what it could not map stays with the driver
@@ -278,7 +287,7 @@ bool QfnRuntime::kv_fit(basalt::core::SessionState& s, int64_t cells, std::strin
     const int64_t before = xcache.slots();
     size_t free_b = 0, total_b = 0;
     basalt::core::gpu_mem_info(&free_b, &total_b);
-    int64_t room = std::max<int64_t>(0, (int64_t) free_b - ((int64_t) o.vram_reserve_mib << 20));
+    int64_t room = std::max<int64_t>(0, (int64_t) free_b - (elastic_floor_mib() << 20));
     if (!shrink && add > room) { e.clear(); return false; }
     // the KV of idle conversations whose time is up goes before the expert cache's slots, any idle one's before
     // a refusal
@@ -288,7 +297,7 @@ bool QfnRuntime::kv_fit(basalt::core::SessionState& s, int64_t cells, std::strin
         if (got > 0) {
             parked += got;
             basalt::core::gpu_mem_info(&free_b, &total_b);
-            room = std::max<int64_t>(0, (int64_t) free_b - ((int64_t) o.vram_reserve_mib << 20));
+            room = std::max<int64_t>(0, (int64_t) free_b - (elastic_floor_mib() << 20));
         }
         return got >= 0;
     };

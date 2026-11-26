@@ -54,6 +54,7 @@ int cache_size(Context& context) {
             ? basalt::core::Verifier::hs_peer_bytes(native_head.row_bytes(), native_head.type(), n_vocab, g.n_embd, max_t,
                                                     d0, o.peer_device) : 0;
         const int64_t peer_room = (int64_t) f1 - (((int64_t) std::max(o.peer_reserve_mib, 128) << 20) +
+                                                  ((int64_t) kLazyKernelsMib << 20) +   // the tier's kernels load on its first rows
                                                   (int64_t) basalt::core::PeerExperts::device_overhead_bytes(g.n_embd, g.n_ff) + hs +
                                                   (int64_t) peer_prompt_bytes());
         // CUDA0's cache: its free memory less the reserve and what loads after the cache
@@ -97,9 +98,7 @@ int cache_size(Context& context) {
         int64_t late_room = 0;
         {
             const char* ml = std::getenv("CUDA_MODULE_LOADING");
-            constexpr int64_t kLazyKernelsMib = 96;
-            constexpr int64_t kSlotWindowsMib = 24;   // one session's solo windows, or the batch windows
-            if (o.serve || ml == nullptr || std::strcmp(ml, "EAGER") != 0) late_room += kLazyKernelsMib << 20;
+            if (o.serve || ml == nullptr || std::strcmp(ml, "EAGER") != 0) late_room += (int64_t) kLazyKernelsMib << 20;
             if (o.serve && o.batch >= 2 && slot0_is_solo) late_room += ((int64_t) o.batch * kSlotWindowsMib) << 20;
         }
         const int64_t reserve_b = std::max<int64_t>((int64_t) o.vram_reserve_mib << 20,

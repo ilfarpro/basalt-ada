@@ -124,4 +124,13 @@ struct Options : CommonOptions {
     int64_t prompt_cache_every = 16384;
 };
 
+/// Kernels that first run after the cache is sized load into the reserve (CUDA_MODULE_LOADING=EAGER is what makes
+/// the room free): the prompt path's and the verify windows' own modules, cuBLAS's GEMM kernels on their first use,
+/// the MMQ pool's stream-k tiles.  The main card's loader holds it back for them, the peer card's tier price holds
+/// it back for the peer's own kernels, which load lazily on its first rows, and the elastic KV stops its strip at
+/// a reserve that still owes this room - the first prompt's MMQ launch is what spends it.
+inline constexpr int kLazyKernelsMib = 96;
+/// One session's solo windows, or the batch windows, allocated after the cache is sized.
+inline constexpr int kSlotWindowsMib = 24;
+
 }  // namespace basalt::models::qwen4exp
