@@ -31,15 +31,14 @@ nvcc, DDR5 188 GiB host. The second card (RTX 5060 Ti) runs a serve and is never
 
 | date | HEAD | decode conv/struct/prose (tok/s) | decode weighted | prefill 16k / 64k (tok/s) | notes |
 |---|---|---|---|---|---|
-| 2026-11-26 | 93045a4b | 37.1 / 52.6 / 38.0 | 48.3 | 2675 / 2947 | baseline; accept 70.9/98.1/67.7%, draft len 1.7/6.9/1.6; ~231 W of 320 drawn at ~2600 MHz SM while decoding |
+| 2026-11-26 | 93045a4b | 37.1 / 52.6 / 38.0 | 48.3 | 2675 / 2947 | **superseded by the clean row below** - taken before serve CPU-seconds were accounted and the serve had live traffic through it; accept 70.9/98.1/67.7%, draft len 1.7/6.9/1.6; ~231 W of 320 drawn at ~2600 MHz SM while decoding |
+| 2026-11-26 04:30 | 09941828 | 57.4 / 89.8 / 61.4 | 80.4 (preset's own) | 3520 / 3758 | **the clean HEAD series**: same preset, same pack, serve 0 CPU-s during the whole 210 s run (verified); accept 69.1/98.1/68.0%, draft len 1.8/6.9/1.5 - the workload is identical to the 93045a4b row, the code differs only in the log warning, so the old row's -35% is contamination (the serve's ~20-core bursts), not the cold preset: these cold-process numbers match the warm A/B harness's steady state (57.5-59.0 / 90.6-91.3 / 61.2-62.2). Page cache hot (pack mapped in 15 s); ram_gbps recorded 56.8 |
 
-Flagged: the same build at the warm A/B harness measured 57.5 / 90.6 / 61.2 tok/s for the three
-fixtures - the preset's own cold numbers sit 35-53% below. Two suspects, both unproven: the preset
-starts each fixture on an idle GPU (210 MHz idle clocks, graphs uncaptured) inside a ~25 s cold
-measurement, and the serve on the other card runs real traffic in bursts that steal ~7 cores for
-minutes at a time. Measurements of this session are now guarded: the serve's CPU-seconds per run
-are recorded next to every arm and a bursty arm is discarded. Series entries stay comparable to
-each other; do not compare them to the warm harness row.
+Resolved (04:30): the clean cold-process series above sits at the warm harness's steady state,
+so the preset is not intrinsically slow - the baseline row sat 35-53% low because the serve's
+~20-core bursts ran through it (it predates the per-arm serve accounting). The idle-clock ramp
+theory does not survive: with the serve quiet, a cold process on freshly-captured graphs measures
+the same as the warm harness. Every row from tonight carries its serve CPU-seconds.
 
 Manual reference at `93045a4b` (hand run): story generation **52 tok/s decode**, 91k prompt
 **3700 tok/s prefill**. A 32-token cold `generate` at the same commit: 27.6-27.8 tok/s decode,
