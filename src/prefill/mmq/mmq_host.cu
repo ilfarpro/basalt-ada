@@ -16,6 +16,19 @@
     std::abort();
 }
 
+[[noreturn]] void ggml_cuda_oom(const cudaError_t err, const long long asked_bytes, const char * stmt,
+                                const char * func, const char * file, const int line) {
+    int dev = -1;
+    size_t free_b = 0, total_b = 0;
+    if (cudaGetDevice(&dev) != cudaSuccess) { dev = -1; }
+    if (cudaMemGetInfo(&free_b, &total_b) != cudaSuccess) { free_b = 0; }
+    (void) cudaGetLastError();
+    char msg[192];
+    snprintf(msg, sizeof msg, "%s (asked %lld B, device %d, %llu MiB free)", cudaGetErrorString(err),
+             asked_bytes, dev, (unsigned long long) (free_b >> 20));
+    ggml_cuda_error(stmt, func, file, line, msg);
+}
+
 int ggml_cuda_get_device() {
     int id = 0;
     CUDA_CHECK(cudaGetDevice(&id));
@@ -75,7 +88,8 @@ struct CachingPool : ggml_cuda_pool {
         for (auto & b : bufs)
             if (!b.used && b.size >= size) { b.used = true; *actual_size = b.size; return b.p; }
         void * p = nullptr;
-        CUDA_CHECK(cudaMalloc(&p, size));
+        const cudaError_t e = cudaMalloc(&p, size);
+        if (e != cudaSuccess) { ggml_cuda_oom(e, (long long) size, "cudaMalloc(&p, size)", __func__, __FILE__, __LINE__); }
         bufs.push_back({p, size, true});
         *actual_size = size;
         return p;

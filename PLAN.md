@@ -185,7 +185,15 @@ new kernel bodies and no kernel source changed.
       three planners - the prompt split (`split_plan`), the head split (`hs_plan`, `hs_plan_two`)
       and the mixer split (`gs_plan_bw`) - so a cross-capability peer is used only for expert MMQ.
       Rerun the serve start in a serve-stopped window: the three splits must decline, the peer tier
-      (experts rows, prompt-chunk rows) must stay, then measure decode and prefill.
+      (experts rows, prompt-chunk rows) must stay, then measure decode and prefill.  The reruns
+      declined the splits and the peer tier loaded clean, but the first prompt of a peer serve dies
+      in the MMQ with a bare "out of memory": the main card ends loading at 205 MiB free (one-card
+      serving runs fine at 211) and the prompt's first MMQ launch takes its module load, scratch
+      pool and buffers after the cache is sized; the peer card's price (`cache_size.cpp`) reserves
+      its transport buffers but nothing for the peer kernels that load lazily on its first rows.
+      Next: MMQ allocation failures now name the ask, the card and its free memory; one run with
+      both reserves raised says which card's price is short - price that item where the tier sizes
+      itself, and the reserve stays an honest floor.
 
 ## Later Ada work (out of the scope above)
 
