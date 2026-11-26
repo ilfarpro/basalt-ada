@@ -14,6 +14,8 @@ __pycache__/
 /models/
 /packs/
 /mtp/
+# the engine's own run configs are written where its binary ran
+/config/
 /.ccache/
 .DS_Store
 
