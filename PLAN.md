@@ -138,6 +138,39 @@ is reworked, not shipped.
       RAM (systemd-oomd kills the second loader; the measured record stands in
       `docs/ada-optimizations.md`) and a serve-stopped window was declined. Not to be restaged.
 
+## Ada main card + Blackwell (sm_120) peer - the mirrored cross-capability build
+
+`-DPEER_BLACKWELL=ON` is the mirror of `-DPEER_ADA=ON`: an sm_89 build compiles the peer-tier
+kernel list (the `dec_moe` peer variants, the peer's MMQ instances, the iq/quantize/wait/sampler/
+elementwise helpers, plus `native_moe.cu` as `dec_moe_parity`'s reference side on the peer card)
+also for sm_120, so a Blackwell card can hold and compute experts for an Ada main card. The gates
+accept a foreign sm_120 peer only under the flag (`gpu_peer_supported`, the `choose_gpus` refusal
+text, `check_gpu_modes` through the new `GpuModes::peer_blackwell`), and Flash-Next is the model
+whose peer kernels are in that set. The peer runs only the shared standard-CUDA kernels, so no
+new kernel bodies and no kernel source changed.
+
+- [x] Build option and guards (needs an 89 build, refuses together with `PEER_ADA`), the
+      mirrored source list, gates and refusal texts, `GpuModes::peer_blackwell`, the
+      `gpu_select_test` cases for both flag states and the model gate; the full-suite build
+      with `-DWERROR=ON`.
+- [x] `window_gemm_two_gpu` skips (77) when the second card does not run this build's kernels:
+      it replans main-card kernels there, which is the split rule of the same capability, never
+      the cross-capability peer. Its cross-card bitwise item below "Later Ada work" stays open.
+- [x] Docs: "an older peer card" becomes "a peer card of the other capability" in
+      `docs/configuration/gpus.md` (both directions, speeds not ages); `docs/platforms.md`
+      names both flags.
+- [ ] Two-card GPU verification on the 4080 SUPER + 5060 Ti pair, in a serve-stopped window (the
+      main card is fully held while the serve runs): `CUDA_VISIBLE_DEVICES=0,1 ctest -R
+      "dec_moe_parity_kq|peer_share_parity|expert_tier_test|ds41_peer_parity|host_registration_test"`.
+      `dec_moe_parity`'s window checks are the cross-card bitwise gate (the peer kernel against
+      `native_expert_grouped`, both running on the Blackwell card); `peer_share_parity` checks a
+      prompt chunk's peer MMQ share against the main card's MMQ and a double CPU reference.
+- [ ] End to end: `--gpu 0,1 --gpu-mode peer` on the UD-Q4_K_XL pack, decode and prefill against
+      the one-card baseline (67 / 4068 tok/s at DDR5-5600), recorded in `docs/ada-optimizations.md`
+      before any speed claim. This machine's peer slot is electrically PCIe 4.0 x4 (~6.5-7 GB/s):
+      it moves the expert load at start and any row crossing, not the steady-state decode math,
+      which keeps expert rows on the card that holds them.
+
 ## Later Ada work (out of the scope above)
 
 - [ ] NVFP4 experts on Ada: decode through the `narrow_bf16` path (done), prefill through an Ada

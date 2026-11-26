@@ -4,8 +4,10 @@ Linux x64 and Windows x64 with an NVIDIA Blackwell (sm_120) or Ada Lovelace (sm_
 Spark, described in [arm64](arm64.md). Linux x64 is where the engine is tested and benchmarked. CI builds all three and runs the
 CPU tests on each. The GPU tests and the quality gate need a card.
 
-The main card is sm_120 (Blackwell) or sm_89 (Ada Lovelace). In the multi-GPU tier, when built with `-DPEER_ADA=ON`, a second card of sm_89 (Ada) can be a Flash-Next peer that holds
-and computes experts for a Blackwell main card (`gpu-mode peer`, [GPUs](configuration/gpus.md#an-older-peer-card)). No other NVIDIA architecture runs any path.
+The main card is sm_120 (Blackwell) or sm_89 (Ada Lovelace). In the multi-GPU tier a second card of the other discrete capability
+can be a Flash-Next peer that holds and computes experts for the main card: sm_89 (Ada) beside a Blackwell main card when built
+with `-DPEER_ADA=ON`, or sm_120 (Blackwell) beside an Ada main card when built with `-DPEER_BLACKWELL=ON` (`gpu-mode peer`,
+[GPUs](configuration/gpus.md#a-peer-card-of-the-other-capability)). No other NVIDIA architecture runs any path.
 
 | | Linux | Windows | Linux Arm64 |
 | --- | --- | --- | --- |

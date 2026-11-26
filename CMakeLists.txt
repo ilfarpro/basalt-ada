@@ -19,9 +19,18 @@ endif()
 option(BUILD_TESTING "Build the tests and parity programs" OFF)
 # Covers the project's own C++ and CUDA sources only; off by default so a newer compiler's new warning cannot break a user build.
 option(WERROR "Treat compiler warnings as errors" OFF)
-# Optional peer architectures: building the peer-tier kernels for sm_89 (Ada) in addition to sm_120
-# allows a non-Blackwell card to serve as the expert tier, but adds build time.
+# Optional peer architectures: building the peer-tier kernels for the other architecture's cards in addition
+# to the main card's allows a cross-arch card to serve as the expert tier, but adds build time.
 option(PEER_ADA "Compile peer kernels for sm_89 (Ada) in addition to sm_120" OFF)
+option(PEER_BLACKWELL "Compile peer kernels for sm_120 (Blackwell) in addition to sm_89 (Ada)" OFF)
+if(PEER_BLACKWELL)
+  if(NOT BASALT_CUDA_CC STREQUAL "89")
+    message(FATAL_ERROR "PEER_BLACKWELL is an Ada main-card build's option (CMAKE_CUDA_ARCHITECTURES 89): a Blackwell build already compiles these kernels for its own cards")
+  endif()
+  if(PEER_ADA)
+    message(FATAL_ERROR "PEER_ADA and PEER_BLACKWELL name opposite peer architectures; each belongs to the other capability's build")
+  endif()
+endif()
 if(BUILD_TESTING)
   enable_testing()
 endif()
@@ -517,11 +526,10 @@ target_link_libraries(basalt-load PRIVATE core kernels)
 endif()
 
 # Peer-tier compilation: the expert-window decode kernels, the peer prefill mmq/iota kernels and the
-# small utility kernels that run on the peer card additionally compile for sm_89 (Ada), so a non-Blackwell
-# card can serve as the expert tier. Must be set BEFORE the targets that compile these files are defined.
-if(PEER_ADA)
-  add_compile_definitions(BASALT_PEER_ADA=1)
-  set_source_files_properties(
+# small utility kernels that run on the peer card additionally compile for the cross-arch peer's capability,
+# so a card of the other architecture can serve as the expert tier: sm_89 in a Blackwell build (-DPEER_ADA=ON),
+# sm_120 in an Ada build (-DPEER_BLACKWELL=ON). Must be set BEFORE the targets that compile these files are defined.
+set(BASALT_PEER_KERNEL_SOURCES
     src/models/qwen4exp/kernels/dec_moe.cu
     src/models/qwen4exp/kernels/dec_moe_peer_q0_m0.cu
     src/models/qwen4exp/kernels/dec_moe_peer_q0_m1.cu
@@ -553,8 +561,16 @@ if(PEER_ADA)
     src/kernels/cuda/quantize_act.cu
     src/kernels/cuda/wait_abort.cu
     src/kernels/cuda/sampler.cu
-    src/kernels/cuda/elementwise.cu
+    src/kernels/cuda/elementwise.cu)
+if(PEER_ADA)
+  add_compile_definitions(BASALT_PEER_ADA=1)
+  set_source_files_properties(${BASALT_PEER_KERNEL_SOURCES}
     PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
+endif()
+if(PEER_BLACKWELL)
+  add_compile_definitions(BASALT_PEER_BLACKWELL=1)
+  set_source_files_properties(${BASALT_PEER_KERNEL_SOURCES}
+    PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_120,code=sm_120")
 endif()
 
 # Ada as a main card (PLAN.md): dense_tc's and qsa_mid's sm_89 bodies are designed for Ada, so their parity tests run
@@ -648,6 +664,12 @@ if(PEER_ADA)
     PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_89,code=sm_89")
   set_source_files_properties(src/models/qwen4exp/kernels/native_qsa_indexer.cu
     PROPERTIES COMPILE_OPTIONS "--use_fast_math;--generate-code=arch=compute_89,code=sm_89")
+endif()
+# dec_moe_parity's reference side: native_expert_grouped runs on the Blackwell card beside the peer kernels it
+# checks (set AFTER the --use_fast_math block above so it survives; plain CUDA, no sm_120-only instructions).
+if(PEER_BLACKWELL)
+  set_source_files_properties(src/models/qwen4exp/kernels/native_moe.cu
+    PROPERTIES COMPILE_OPTIONS "--use_fast_math;--generate-code=arch=compute_120,code=sm_120")
 endif()
 # Ada as a main card (PLAN.md): inkling2's and hy4flash's kernels are plain CUDA apart from their L2
 # read-ahead, which walks prefetch.global.L2 line by line on Ada (basalt/kernels/l2_pf.cuh).  Per file:

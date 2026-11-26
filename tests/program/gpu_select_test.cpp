@@ -209,6 +209,11 @@ int main() {
         two.cards = {0, 1};
         two.mode = GpuMode::Peer;
         CHECK_STR(check_gpu_modes(two, "Hy4-flash", hy4, ours), "");
+        // an sm_120 peer, which only a -DPEER_BLACKWELL=ON Ada build lists: the same rule mirrored - a model whose
+        // peer kernels that build does not compile refuses it, Flash-Next's shared peer set runs
+        const std::vector<GpuCard> bw = {card(0, "RTX 4080 SUPER", kOursMajor, kOursMinor, 240, 12), card(1, "RTX 5080", 12, 0, 896, 16)};
+        CHECK_STR(check_gpu_modes(two, "Hy4-flash", hy4, bw), "gpu-mode peer: GPU 1 (RTX 5080) is sm_120; Hy4-flash runs peer on " + kOurs + " cards");
+        CHECK_STR(check_gpu_modes(two, "Qwen3.8-Flash-Next", GpuModes{4, 8, 0, true, true}, bw), "");
 #endif
     }
     // The same cards with the slower one first.
@@ -253,14 +258,21 @@ int main() {
 #endif
     }
 #else
-    // A Blackwell card on an Ada build: never the main card, never any peer - the special sm_89 allowances run the
-    // other way here, and a newer architecture than the build's has none of them.
+    // A Blackwell card on an Ada build: never the main card; a peer only in a -DPEER_BLACKWELL=ON build; never
+    // in split or tensor - the same cross-capability rule as sm_89 in a -DPEER_ADA=ON build, mirrored.
     {
         const std::vector<GpuCard> v = {card(0, "RTX 4080 SUPER", kOursMajor, kOursMinor, 240, 12), card(1, "RTX 5080", 12, 0, 896, 16)};
         CHECK_STR(pick("1,0", v, "peer").error, "gpu 1,0: GPU 1 (RTX 5080) is sm_120; the main card must be " + kOurs);
         CHECK_STR(pick("1", v).error, "gpu 1: GPU 1 (RTX 5080) is sm_120; the main card must be " + kOurs);
-        CHECK_STR(pick("0,1", v, "peer").error, "gpu-mode peer: GPU 1 (RTX 5080) is sm_120; peer runs on " + kOurs + " cards");
-        CHECK_STR(pick("0,1", v, "split").error, "gpu-mode split: GPU 1 (RTX 5080) is sm_120; split and tensor run on " + kOurs + " cards");
+        CHECK_STR(pick("0,1", v, "split").error, "gpu-mode split: GPU 1 (RTX 5080) is sm_120; split and tensor run on " + kOurs +
+                                                     " cards (peer takes sm_120 in a -DPEER_BLACKWELL=ON build)");
+#if defined(BASALT_PEER_BLACKWELL)
+        CHECK_STR(cards(pick("0,1", v, "peer")), "0,1");
+        CHECK_STR(cards(pick("all", v, "peer")), "0,1");
+#else
+        CHECK_STR(pick("0,1", v, "peer").error, "gpu-mode peer: GPU 1 (RTX 5080) is sm_120; peer takes sm_120 in a -DPEER_BLACKWELL=ON build");
+        CHECK_STR(pick("all", v, "peer").error, "gpu-mode peer: GPU 1 (RTX 5080) is sm_120; peer takes sm_120 in a -DPEER_BLACKWELL=ON build");
+#endif
         CHECK_STR(cards(pick("", v)), "0");
     }
 #endif
