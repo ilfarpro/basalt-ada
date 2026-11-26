@@ -65,7 +65,10 @@ theory does not survive: with the serve quiet, a cold process on freshly-capture
 the same as the warm harness. Every row from tonight carries its serve CPU-seconds.
 
 Manual reference at `93045a4b` (hand run): story generation **52 tok/s decode**, 91k prompt
-**3700 tok/s prefill**. A 32-token cold `generate` at the same commit: 27.6-27.8 tok/s decode,
+**3700 tok/s prefill**. The owner re-verified the same way at the 07:01 build (HEAD `3651cfb0`,
+their method: "Привет" warm-up turn, long Russian moon story, default sampling, rate read over
+the long generation): **55 tok/s decode, prefill ~3700 unchanged** - accepted as the interim
+Ada-main result. A 32-token cold `generate` at the same commit: 27.6-27.8 tok/s decode,
 37.9-39.1 tok/s prefill, TTFT ~17 s - the short run carries the cold expert windows, the long
 runs reach the steady state; both are comparisons against themselves, not against the hand run.
 
@@ -186,7 +189,7 @@ this regime (accept ~59-73%, conversations cold-to-warm); the engine-side lever 
 remains the round rate itself - RAM bandwidth (the DDR5 verdict) and CPU-pool speed - not
 slot counts.
 
-## Basalt vs Strata on the same card and pack (blocked on RAM, found 05:31)
+## Basalt vs Strata on the same card and pack (blocked on RAM, found 05:31; dropped by the owner 07:49 - kept as the measured record, do not restage)
 
 Strata 0.2.21.1 is installed with the same pack (`Qwen3.8-Flash-Next-UD-Q4_K_XL`, GGUF shards).
 The saved run configs behind the profiles were stale (they point at control/0.1.63, deleted by
@@ -206,7 +209,9 @@ decode, 4k/16k prefill, concurrency ladder c1-c4 x r1-r3, warmup) is one quiet
 default (Strata runs `--spec 4 --spec-min-p 0.5`, Basalt the engine default 8) and the protocols
 differ (community-1 is cold per fixture, standard-v1 is served state): the comparison will be
 per-engine steady states, guarded by an ABBA repetition that guards drift, not protocol. The
-320 W power limit gets stated with the row.
+320 W power limit gets stated with the row. Decision (07:49): the owner dropped the comparison
+and the serve-stopped window; what the section keeps is the machine fact - this RAM holds one
+engine under ~72 GiB pinning, two never.
 
 ## The expert cache hit rate and the learned profile (measured: cold-start value only)
 

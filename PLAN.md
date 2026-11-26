@@ -6,8 +6,9 @@ The current plan of scheduled work. Read it before picking up a task; update it 
 
 The docs already name sm_89 a supported main card; the build and the runtime do not yet run it.
 The scope of this section is one model and one pack class: a UD-Q4_K_XL pack of
-Qwen3.8-Flash-Next running end to end on one Ada main card at a stock driver, no slower than
-Strata on the same card and the same pack.  The other models (inkling2, hy4flash, deepseek41,
+Qwen3.8-Flash-Next running end to end on one Ada main card at a stock driver. (The
+no-slower-than-Strata bar: the face-off was dropped by the owner on 2026-11-26 - the owner's
+own runs, recorded under Benchmarks below, are the acceptance.)  The other models (inkling2, hy4flash, deepseek41,
 qwen35) and the NVFP4 packs stay out until this one ships; the narrow_bf16 work done for NVFP4
 remains valid but sits off the Q4_K_XL path, and the inkling2/hy4flash read-ahead conversion was
 finished just before this scope was drawn (its notes stay below as evidence).  A probe build
@@ -121,18 +122,17 @@ is reworked, not shipped.
       (Done on a 4080 SUPER: prefill 39 tok/s, decode 27.8 tok/s over 32 tokens with spec/MTP; the card's
       expert cache needs a --expert-cache margin for the window graphs - the auto fill left none, and the
       verify graph instantiate failed.)
-- [ ] Benchmarks: Basalt vs Strata on one card, one pack, one drafter; ABBA with the power limit
-      stated; decode in ms per window at T=1/4/8/16 with the acceptance rate; stock drivers only.
-      Status 06:30: blocked on this box by RAM, not code - the serve's 73.5 GiB pinned complement
-      leaves no room for Strata's ~72 GiB engine beside it (systemd-oomd kills it in seconds;
-      details in `docs/ada-optimizations.md`). Everything is staged: profile `ada-night-compare`
-      + `/tmp/strata_cfg_q4_4080.json` (same pack, GPU 0, port 18080); needs the serve stopped
-      for ~40 minutes (the user's call). Basalt's side of the row is done (clean 04:30 series).
-      Reference for the next manual comparison (measured by hand on the 4080 SUPER at 93045a4b,
-      the current Ada implementation): a story-about-the-moon generation runs **52 tok/s decode**,
-      and a 91k-token prompt prefills at **3700 tok/s**. The repeating automated harness is
-      `basalt-bench` (the `--community` preset: three cold decode fixtures plus 16k/64k prefills);
-      its Ada series and every optimization's before/after live in `docs/ada-optimizations.md`.
+- [x] Benchmarks: the Basalt rows are banked; the repeating harness is `basalt-bench` (the
+      `--community` preset: three cold decode fixtures plus 16k/64k prefills) and its Ada series
+      with every optimization's before/after lives in `docs/ada-optimizations.md`. The owner
+      verified the interim result by hand (their method: "Привет" warm-up turn, then a long
+      Russian moon story, default sampling, rates read over long generations - 800 tokens is
+      too short to see the ceiling): **55 tok/s decode (52 on the 93045a4b-era build)** with
+      the 91k-prompt prefill unchanged at **~3700 tok/s** - accepted as the interim Ada-main
+      result. The Basalt-vs-Strata face-off on this card is **dropped by the owner
+      (2026-11-26 07:49)**: the two engines' ~72 GiB pinned complements cannot coexist in this
+      RAM (systemd-oomd kills the second loader; the measured record stands in
+      `docs/ada-optimizations.md`) and a serve-stopped window was declined. Not to be restaged.
 
 ## Later Ada work (out of the scope above)
 
