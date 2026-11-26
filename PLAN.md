@@ -4,7 +4,8 @@ The current plan of scheduled work. Read it before picking up a task; update it 
 
 ## Ada (sm_89) main card - scoped to Qwen3.8-Flash-Next, UD-Q4_K_XL
 
-The docs already name sm_89 a supported main card; the build and the runtime do not yet run it.
+The docs already name sm_89 a supported main card; the build and the runtime now run it (the items
+below are done and measured, the 4080 SUPER numbers in docs/ada-optimizations.md).
 The scope of this section is one model and one pack class: a UD-Q4_K_XL pack of
 Qwen3.8-Flash-Next running end to end on one Ada main card at a stock driver. (The
 no-slower-than-Strata bar: the face-off was dropped by the owner on 2026-11-26 - the owner's
