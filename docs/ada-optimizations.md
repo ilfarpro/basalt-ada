@@ -27,15 +27,12 @@ nvcc, DDR5 188 GiB host. The second card (RTX 5060 Ti) runs a serve and is never
   subcommand to pass positionally before the flags - `basalt generate ...` is refused as
   `unknown argument: generate`). moon_ids.txt = the tokens of
   `"Write a short story about the moon."` wrapped in the pack's chat template (16 tokens,
-  encoded with the repo's own `tools/tokenizer.py`). As of tonight the one-shot path no longer
-  fits VRAM on this machine at any cap down to 2600 slots (see the OOM anomaly below), so the
-  practical reproduction is the user-like serve path: a second serve on GPU 0
-  (`bin/basalt serve <pack> --python <venv> --port 18081 --kv int8 --vram-reserve-mib 128
-  --max-context 16384`), then one `/v1/chat/completions` call with the prompt and
-  `max_tokens: 800`. First request after load measured 41.8 tok/s end-to-end (184 tokens in
-  4.4 s), the hot repeat 66.0 tok/s (323 tokens in 4.9 s, prompt-cached): the user's hand
-  figure of 52 tok/s sits between them (their serve is ctx 200k elastic under live traffic).
-  Texts differ run to run (temperature 0.7); the row compares build to build, not the story.
+  encoded with the repo's own `tools/tokenizer.py`). The one-shot path needs a low cache cap
+  to leave graph headroom (see the knife-edge section: `--expert-cache 1200` -> 86.30 tok/s);
+  the user-like serve path (a second serve on GPU 0, ctx 16384, one chat call with
+  `max_tokens: 800`) measured 41.8 tok/s end-to-end cold, 66.0 hot - the user's hand figure of
+  52 tok/s sits between (their serve: ctx 200k elastic under live traffic). Texts differ run
+  to run (temperature 0.7); the row compares build to build, not the story.
 
 | date | HEAD | decode conv/struct/prose (tok/s) | decode weighted | prefill 16k / 64k (tok/s) | notes |
 |---|---|---|---|---|---|
