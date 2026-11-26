@@ -123,6 +123,11 @@ is reworked, not shipped.
       verify graph instantiate failed.)
 - [ ] Benchmarks: Basalt vs Strata on one card, one pack, one drafter; ABBA with the power limit
       stated; decode in ms per window at T=1/4/8/16 with the acceptance rate; stock drivers only.
+      Status 06:30: blocked on this box by RAM, not code - the serve's 73.5 GiB pinned complement
+      leaves no room for Strata's ~72 GiB engine beside it (systemd-oomd kills it in seconds;
+      details in `docs/ada-optimizations.md`). Everything is staged: profile `ada-night-compare`
+      + `/tmp/strata_cfg_q4_4080.json` (same pack, GPU 0, port 18080); needs the serve stopped
+      for ~40 minutes (the user's call). Basalt's side of the row is done (clean 04:30 series).
       Reference for the next manual comparison (measured by hand on the 4080 SUPER at 93045a4b,
       the current Ada implementation): a story-about-the-moon generation runs **52 tok/s decode**,
       and a 91k-token prompt prefills at **3700 tok/s**. The repeating automated harness is
