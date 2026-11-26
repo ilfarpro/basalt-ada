@@ -1,18 +1,14 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/basalt-lockup-dark.png"><img src="assets/basalt-lockup-light.png" alt="Basalt" width="480"></picture></p>
 
-Basalt is a local inference engine for large language models: **Qwen3.8-Flash-Next**, **DeepSeek-V4.1-Flash**, **Qwen3.8-27B**, **Hy4-flash** and **Inkling 2 Mini**. It runs
-on an NVIDIA Blackwell (sm_120) or Ada Lovelace (sm_89) GPU on Linux and Windows x64, and on the DGX Spark (GB10, Arm64), with what does not fit in VRAM
-(the experts of a mixture-of-experts model) in system RAM, and optionally on more GPUs. The server speaks the OpenAI and Anthropic APIs. Website: [basalt.jgulfo.com](https://basalt.jgulfo.com).
+> **Basalt Ada is a fork of [Basalt](https://github.com/jesdga95/basalt) by [jesdga95](https://github.com/jesdga95). This fork extends hardware support backwards: from Blackwell to Ada Lovelace.**
+
+Issues & PRs are welcome and appreciated!
+
+*Original Basalt is a local inference engine for large language models: **Qwen3.8-Flash-Next**, **DeepSeek-V4.1-Flash**, **Qwen3.8-27B**, **Hy4-flash** and **Inkling 2 Mini**. It runs
+only on an NVIDIA Blackwell (sm_120) GPU on Linux and Windows x64, and on the DGX Spark (GB10, Arm64), with what does not fit in VRAM
+(the experts of a mixture-of-experts model) in system RAM, and optionally on more GPUs. The server speaks the OpenAI and Anthropic APIs.*
 
 <p align="center"><img src="docs/img/frontend.gif" alt="The Basalt web UI while a reply streams" width="720"></p>
-
-**Help wanted:** spare Blackwell or Ada compute for testing? See [Contributing](CONTRIBUTING.md#other-ways-to-help).
-
-<p align="center">
-  <a href="https://github.com/sponsors/jesdga95"><img src="assets/donate/github.svg" height="44" alt="Sponsor on GitHub"></a>
-  <a href="https://ko-fi.com/jesdga"><img src="assets/donate/kofi.svg" height="44" alt="Support on Ko-fi"></a>
-  <a href="https://paypal.me/jesdga"><img src="assets/donate/paypal.svg" height="44" alt="Donate on PayPal"></a>
-</p>
 
 ## Requirements
 
@@ -27,15 +23,19 @@ Prebuilt Linux (x64 and Arm64) and Windows archives are attached to each [releas
 
 ```sh
 git clone https://github.com/jesdga95/basalt && cd basalt
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+                                        # pick the one configure line for the main card this build serves:
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release                                   # Blackwell (sm_120) main card - the default
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=89     # Ada (sm_89) main card: Qwen3.8-Flash-Next only ([building](docs/building.md#building-for-an-ada-main-card))
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=89 -DPEER_BLACKWELL=ON
+                                                                                 #   ... Ada main card with a Blackwell (sm_120) card beside it as the expert tier ([GPUs](docs/configuration/gpus.md#a-peer-card-of-the-other-capability))
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPEER_ADA=ON
+                                                                                 #   ... Blackwell main card with an Ada (sm_89) card beside it as the expert tier
 cmake --build build -j                  # bin/basalt, bin/basalt-bench, bin/basalt-probe, bin/basalt-vision
-                                        # Windows: add -G Ninja to the first line, from an x64 VS 2022 prompt ([platforms](docs/platforms.md#building-on-windows))
+                                        # Windows: add -G Ninja to the configure line, from an x64 VS 2022 prompt ([platforms](docs/platforms.md#building-on-windows))
                                         # one model only: -DBASALT_MODELS=qwen4exp, deepseek41, qwen35, hy4flash or inkling2 ([building](docs/building.md#building-only-some-models))
-                                        # an Ada (sm_89) main card: add -DCMAKE_CUDA_ARCHITECTURES=89 to the first line; it serves Qwen3.8-Flash-Next only ([building](docs/building.md#building-for-an-ada-main-card))
-                                        # a peer card of the other capability (a Blackwell build takes -DPEER_ADA=ON, an Ada build -DPEER_BLACKWELL=ON): [GPUs](docs/configuration/gpus.md#a-peer-card-of-the-other-capability)
 pip install -r requirements.txt
 hf download jesdga/Qwen3.8-Flash-Next-Basalt Qwen3.8-FN-NVFP4-DQ6_K.basalt --local-dir models
-                                        # an Ada build has no FP4 tensor cores: take a GGUF-type pack instead, e.g. Qwen3.8-FN-UD-Q4_K_XL.basalt ([pack](docs/models/qwen38-flash-next.md#pack))
+                                        # an Ada main card has no FP4 tensor cores: take a GGUF-type pack instead, e.g. Qwen3.8-FN-UD-Q4_K_XL.basalt ([pack](docs/models/qwen38-flash-next.md#pack))
 ```
 
 Put the settings in `basalt_config.json`:
