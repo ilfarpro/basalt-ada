@@ -30,7 +30,13 @@ nvcc, DDR5 188 GiB host. The second card (RTX 5060 Ti) runs a serve and is never
   (full-suite run 06:52, log `/tmp/ctest_final_cvd.log`, test tree `/tmp/build-89c` matching
   the sm_89 build at 11ef05b9).
 - **Manual reference (the user's runs):** a story-about-the-moon generation, and a 91k-token
-  prompt prefill.
+  prompt prefill. The user's method (verified 07:35): the serve from the moon section (GPU 0,
+  port 18090, ctx 204800, defaults - no temperature manipulation); after the load first a
+  short "Привет" turn, then a long Russian moon prompt ("long story about the moon backed by
+  real scientific facts, own knowledge, no tools"); the rate is read over a **long**
+  generation - 800 tokens is too short to see the stable ceiling. On this build (07:01, HEAD
+  3651cfb0) the user measures **55 tok/s decode (52 on the 93045a4b-era build) with the
+  prefill unchanged at ~3700** - accepted as the interim Ada-main result.
 - **Moon reproduction (corrected 06:30, corrected again 07:15):** the one-shot form is
   `bin/basalt --model <pack> --tokens "<ids>" --max-new 800 --kv int8 --vram-reserve-mib 128`
   (there is no `generate` subcommand to pass positionally before the flags - `basalt generate
