@@ -1,8 +1,6 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/basalt-lockup-dark.png"><img src="assets/basalt-lockup-light.png" alt="Basalt" width="480"></picture></p>
 
-> **Basalt Ada is a fork of [Basalt](https://github.com/jesdga95/basalt) by [jesdga95](https://github.com/jesdga95). This fork extends hardware support backwards: from Blackwell to Ada Lovelace.**
-
-Issues & PRs are welcome and appreciated!
+> **Basalt Ada is a fork of [Basalt](https://github.com/jesdga95/basalt) by [jesdga95](https://github.com/jesdga95). This fork extends hardware support backwards: from Blackwell to Ada Lovelace. Fork is new, only Qwen 3.8 Flash Next UD-Q4_K_XL is implemented and tested. Treat it like project in early Alpha stage. You'll probably encounter errors and problems. Please consider opening issues and PRs to contribute. They are much appreciated!**
 
 *Original Basalt is a local inference engine for large language models: **Qwen3.8-Flash-Next**, **DeepSeek-V4.1-Flash**, **Qwen3.8-27B**, **Hy4-flash** and **Inkling 2 Mini**. It runs
 only on an NVIDIA Blackwell (sm_120) GPU on Linux and Windows x64, and on the DGX Spark (GB10, Arm64), with what does not fit in VRAM
@@ -21,60 +19,72 @@ only on an NVIDIA Blackwell (sm_120) GPU on Linux and Windows x64, and on the DG
 
 Prebuilt Linux (x64 and Arm64) and Windows archives are attached to each [release](https://github.com/jesdga95/basalt/releases) ([what they need](docs/platforms.md#release-archives)); otherwise build from source:
 
+### 1. Clone repo
 ```sh
-git clone https://github.com/jesdga95/basalt && cd basalt
-                                        # pick the one configure line for the main card this build serves:
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release                                   # Blackwell (sm_120) main card - the default
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=89     # Ada (sm_89) main card: Qwen3.8-Flash-Next only ([building](docs/building.md#building-for-an-ada-main-card))
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=89 -DPEER_BLACKWELL=ON
-                                                                                 #   ... Ada main card with a Blackwell (sm_120) card beside it as the expert tier ([GPUs](docs/configuration/gpus.md#a-peer-card-of-the-other-capability))
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPEER_ADA=ON
-                                                                                 #   ... Blackwell main card with an Ada (sm_89) card beside it as the expert tier
-cmake --build build -j                  # bin/basalt, bin/basalt-bench, bin/basalt-probe, bin/basalt-vision
-                                        # Windows: add -G Ninja to the configure line, from an x64 VS 2022 prompt ([platforms](docs/platforms.md#building-on-windows))
-                                        # one model only: -DBASALT_MODELS=qwen4exp, deepseek41, qwen35, hy4flash or inkling2 ([building](docs/building.md#building-only-some-models))
-pip install -r requirements.txt
-hf download jesdga/Qwen3.8-Flash-Next-Basalt Qwen3.8-FN-NVFP4-DQ6_K.basalt --local-dir models
-                                        # an Ada main card has no FP4 tensor cores: take a GGUF-type pack instead, e.g. Qwen3.8-FN-UD-Q4_K_XL.basalt ([pack](docs/models/qwen38-flash-next.md#pack))
+git clone https://github.com/ilfarpro/basalt-ada && cd basalt
 ```
+### 2. Choose your build type:
+- Ada (sm_89) main card:
+  ```sh
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=89
+  ```
+
+- Ada main card with a Blackwell card beside it as the expert tier
+  ```sh
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=89 -DPEER_BLACKWELL=ON
+  ```
+
+- Blackwell main card with an Ada (sm_89) card beside it as the expert tier
+  ```sh
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPEER_ADA=ON
+  ```
+
+### 3. Build
+```sh
+cmake --build build -j
+```
+- Executables will be in: bin/basalt, bin/basalt-bench, bin/basalt-probe, bin/basalt-vision
+- For Windows: add -G Ninja to the configure line, from an x64 VS 2022 prompt ([platforms](docs/platforms.md#building-on-windows))
+- One model only: 
+  `-DBASALT_MODELS=qwen4exp, deepseek41, qwen35, hy4flash or inkling2` ([building](docs/building.md#building-only-some-models))
+
+
+### 4. Install web-server dependencies
+```sh
+pip install -r requirements.txt
+```
+
+### 5. Download a model
+You also can [repack existing GGUF file](docs/model-file.md).
+```sh
+hf download jesdga/Qwen3.8-Flash-Next-Basalt Qwen3.8-FN-UD-Q4_K_XL.basalt --local-dir models
+```
+
+### 6. Configure
 
 Put the settings in `basalt_config.json`:
 
 ```json
 {
   "version": 2,
-  "models": [{ "model": "models/Qwen3.8-FN-NVFP4-DQ6_K.basalt", "gpu": "0,1", "gpu-mode": "peer", "kv": "int8" }],
+  "models": [{ "model": "models/Qwen3.8-FN-UD-Q4_K_XL.basalt", "gpu": "0,1", "gpu-mode": "peer", "kv": "int8" }],
   "engine": { "resident-experts": true },
   "server": { "port": 8080 }
 }
 ```
+Every setting: [configuration](docs/configuration/index.md). More examples:
+[example configurations](docs/configuration/examples.md).
 
+### 7. Launch
 ```sh
 bin/basalt serve --config basalt_config.json
 ```
 
-The server listens on 127.0.0.1. Every setting: [configuration](docs/configuration/index.md). More examples:
-[example configurations](docs/configuration/examples.md).
+The server listens on 127.0.0.1 and 8080 by default. Override with `--host 0.0.0.0` to open it from local network and change port with `--port` if neccessary. Provide optional `--api-key` when opening access from local network.
 
-## Models
-
-| | Qwen3.8-Flash-Next | DeepSeek-V4.1-Flash | Qwen3.8-27B | Hy4-flash | Inkling 2 Mini |
-|---|---|---|---|---|---|
-| Packs | default `Qwen3.8-FN-NVFP4-DQ6_K`, [Hugging Face](https://huggingface.co/jesdga/Qwen3.8-Flash-Next-Basalt) | default `DeepSeek-V4.1-Flash-1017-UD-IQ1_M`, [Hugging Face](https://huggingface.co/jesdga/DeepSeek-V4.1-Flash-1017-Basalt) | `Qwen3.8-27B-QUASAR-NVFP4`, [Hugging Face](https://huggingface.co/jesdga/Qwen3.8-27B-Basalt) | `Hy4-flash-NVFP4`, [Hugging Face](https://huggingface.co/jesdga/Hy4-flash-Basalt) | `Inkling-2-Mini-NVFP4-MX8`, [Hugging Face](https://huggingface.co/jesdga/Inkling-2-Mini-Basalt) |
-| Context | up to 262,144 (longer with YaRN) | up to 1,048,576 | up to 262,144 | up to 1,048,576 | up to 1,048,576 |
-| Drafting | MTP, on by default | DSpark, on by default | DFlash 2, on by default | DFly2, on by default | DSpark, on by default |
-| Images | yes | yes | yes | yes | yes |
-| Documents (PDF, text) | yes | yes | yes | yes | yes |
-| Guide | [guide](docs/models/qwen38-flash-next.md) | [guide](docs/models/deepseek41.md) | [guide](docs/models/qwen38-27b.md) | [guide](docs/models/hy4-flash.md) | [guide](docs/models/inkling2.md) |
-| Precision | [precision](docs/precision/qwen38-flash-next.md) | [precision](docs/precision/deepseek41.md) | [precision](docs/precision/qwen38-27b.md) | [precision](docs/precision/hy4-flash.md) | [precision](docs/precision/inkling2.md) |
-
-All models compared, with each one's context limit, flags and cards: [models](docs/models/index.md).
-
-## Video
-
-Qwen3.8-Flash-Next and Qwen3.8-27B read video; DeepSeek, Hy4-flash and Inkling 2 Mini do not. A video is named like an image in a chat message, and needs
-`--vision` and FFmpeg on the machine. Flash-Next decodes frames on the GPU with NVDEC; the 27B decodes them on the CPU.
-How a request names a video, and the limits: [video](docs/running.md#video).
+```sh
+bin/basalt serve --config basalt_config.json --host 0.0.0.0 --port 8080 --api-key <your-api-key-here>
+```
 
 ## Documentation
 
@@ -91,15 +101,14 @@ How a request names a video, and the limits: [video](docs/running.md#video).
 
 ## Credits
 
-- **Code:** [Strata](https://github.com/Niko1221/Strata), the project Basalt forks (MIT); [Infernix](https://github.com/Wallawalla47/Infernix)
+- **Code:** [Basalt](https://github.com/jesdga95/basalt) (MIT) the project Basalt Ada forks; [Strata](https://github.com/Niko1221/Strata), the project original Basalt forks (MIT); [Infernix](https://github.com/Wallawalla47/Infernix)
   (Ian Ranson and contributors, Apache-2.0), whose kernels are adapted; [ggml and llama.cpp](https://github.com/ggml-org/llama.cpp)
   (MIT); and ideas from [NInfer](https://github.com/Neroued/ninfer). Licences: [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
 - **Models:** [Qwen](https://huggingface.co/Qwen), [DeepSeek](https://huggingface.co/deepseek-ai), [Tencent](https://huggingface.co/tencent) (Hy4-flash) and Thinking Machines Lab (Inkling 2 Mini), under the licences on their cards;
   [Unsloth](https://huggingface.co/unsloth)'s GGUFs; [NVIDIA](https://huggingface.co/nvidia)'s NVFP4 checkpoints;
   [QUASAR-QAT](https://huggingface.co/QUASAR-QAT/Qwen3.8-27B-QUASAR-NVFP4)'s NVFP4 27B (Apache-2.0); [z-lab](https://huggingface.co/z-lab/Qwen3.8-27B-DFlash2)'s DFlash 2 drafter.
 
-Thank you to everyone who has [contributed](https://github.com/jesdga95/basalt/graphs/contributors) or
-[sponsored](https://github.com/sponsors/jesdga95) the project.
+Thank you to everyone who has [contributed](https://github.com/jesdga95/basalt/graphs/contributors) to the project.
 
 ## License
 
