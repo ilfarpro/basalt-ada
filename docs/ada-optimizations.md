@@ -130,25 +130,34 @@ The last PLAN bar item measured on the 4080 SUPER, all bitwise:
 
 Nothing sits between these kernels and their limits: closed.
 
-## Anomaly (flagged, unresolved): one-shot generation lost ~1-3 GiB of usable VRAM headroom
+## The one-shot VRAM knife-edge (diagnosed 06:35) and what the moon run revealed
 
-Same binary (02:06 build, unchanged source since), same command that ran clean at 01:1x
-(`--tokens ... --max-new 32 --kv int8 --vram-reserve-mib 128`), at 06:12 it fails at
-`verify: instantiate: out of memory` and even at `--expert-cache 2600` the 106 MiB verify
-arena "does not fit". The auto-sizer reports "9.94 GiB free" and fills the cache to the brim
-(3283 slots, 9.55 GiB; the same one-shot command completed cleanly at 01:1x on this build),
-and every cap
-down to 2600 still starves the last buffers - so the missing ~1-3 GiB is gone before the
-engine's own allocations, invisibly: `nvidia-smi` shows 1 MiB used and 16376 total at idle,
-"Reserved 350 MiB", no Xid, no throttle reasons, no compute apps, driver 615.71.09 unchanged
-(this box has run one-shot e2e at this size for days). The serve path on the same GPU is
-unaffected (it loads 14.3 GiB weights+cache + 0.4 KV and decodes fine, measured 66 tok/s hot).
-Most likely a driver-side state accumulated across the night's load/unload cycles (or the
-506 Ti serve's 15 h); a reboot of the box will tell, and if it returns after reboot this is a
-real leak to chase. Benchmarks of the serve path (everything in this doc) are unaffected;
-one-shot numbers after this point in the night must state their cache cap. Workaround used for
-the moon reference above: measure through a serve, like the user does.
+The same one-shot command that completed cleanly at 01:1x began failing at
+`verify: instantiate: out of memory` at 06:12. Root cause, measured with caps (the ~1-3 GiB
+driver-side loss first suspected is retracted - there was none): the expert-cache auto-sizer
+grabs essentially all remaining VRAM ("9.94 GiB free" -> a 9.55 GiB cache) and the verify
+window (106 MiB), the MTP draft graphs, the PDL capture pool and cuBLAS workspaces then share
+~0.3 GiB with the auto-borrowed prompt-path slots - a knife-edge that a few hundred MiB of
+driver-side drift (idle `Reserved` read 350 MiB tonight) tips either way. Two facts make this
+path brittle: the auto-sizer reserves for "what loads after" but not for the graph pools, and
+**one-shot prompt-path borrowing adds ~330-371 slots on top of any `--expert-cache` cap**
+(asked 1200 -> 1529 actual, asked 3000 -> 3371; the serve path's cap is exact - 3179 -> 3179
+verified) - so caps of 2600-3100 still starved the graphs and looked like lost VRAM. With a
+cap low enough to leave graph headroom (`--expert-cache 1200`) the run completes and
+story-about-the-moon decodes **800 tokens at 86.30 tok/s** (default small ctx, KV 0.4 GiB,
+1529 cache slots; TTFT 16.9 s is init, excluded). The serve path never hits the knife-edge
+(elastic KV yields cells to the cache and back): measured 41.8 cold / 66.0 hot tok/s
+end-to-end at ctx 16384 with the same pack and build.
 
+The 86.3 is the find of the hour: this story's routing working set (~1231 distinct experts on
+the prompt path plus a few hundred as the text unfolds) **fits inside the 1529-slot cache**, so
+decode streams almost nothing from RAM. The harness fixtures (mixed routing, accept ~69-98%)
+and the user's ctx-200k serve (elastic KV eats slots, live traffic re-shapes the cache between
+requests) sit at 52-66. Follow-up worth trying on the user's serve at the next restart (cheap,
+quality-neutral - cache residency only, measure before/after with the harness): it runs
+`--expert-cache auto` at ctx 200k with kv-resident 32768; if a typical request is well under
+100k tokens, a smaller `--max-context` (or kv-resident) returns slots to the expert cache, and
+a conversation's working set may start fitting VRAM - which is where the 80s live.
 ## Basalt vs Strata on the same card and pack (blocked on RAM, found 05:31)
 
 Strata 0.2.21.1 is installed with the same pack (`Qwen3.8-Flash-Next-UD-Q4_K_XL`, GGUF shards).
