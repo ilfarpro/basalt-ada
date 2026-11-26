@@ -160,3 +160,11 @@ is in the night chain; if it moves ms/window the serve should restart with the f
 - **`qsa_qproj_half`**: closed above. **PCIe share**: `pcie_frac` is not a Blackwell constant, it is
   computed at start from the probed link (0.55 x min(1, GB/s / 20); this card: 17.3 -> 0.50) -
   already Ada-adaptive, nothing to retune.
+- **`--prefill-cpu-share`**: 0.3 against the default auto (0.6), clean paired prefill arms
+  (hot page cache, serve 0 CPU-s both): 3508.8/3779.2 against 3510.9/3781.8 tok/s at 16k/64k -
+  identical. The flag does nothing measurable on this 20-core machine; default stands.
+  The pair also calibrates the page cache: **hot-cache prefill is ~31% above the cold community
+  row** (3510/3780 against 2675/2947) - the user's hand figure (3700 tok/s at 91k) is hot-cache
+  territory, since a hand run repeats over a pack the RAM already holds. The community row stays
+  the cold canonical; night chains see hot caches after their first load and must not be
+  cross-compared to it.
