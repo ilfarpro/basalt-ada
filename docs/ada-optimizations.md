@@ -134,6 +134,19 @@ the 320 W power limit stated. Caveat recorded in advance: the protocols differ (
 cold per fixture, standard-v1 is its own document) - the comparison is per-engine steady states,
 not a like-for-like protocol race; the ABBA repetition guards drift, not protocol.
 
+## The expert cache hit rate and the learned profile (experiment queued)
+
+The user's serve (read-only log, `/home/ilfarpro/.cache/basalt/aefd5d98dc650ed4/engine.log`,
+03:07): decode expert cache hit rate 51.6-60.8% per request window on the bundled static profile,
+3304 slots (elastic: shrinks to 3284 when KV needs cells), 279M blobs served from RAM since start,
+zero from file. With ~40% of the ~384 per-token lookups missing VRAM and each miss a full blob
+RAM copy, this is the largest remaining cost decode has. The engine already learns exactly such
+a ranking (`--expert-profile-save`: heat accumulates through the session, the file is written at
+stdin close/QUIT and on a timer, and a present file replaces the model's profile at the next
+start - `load/model.cpp`, `serve/tier_profile.cpp`); it is opt-in and off on this machine. The
+queued warm-harness A/B (learn pass on conv+struct+prose, then ON/OFF arms with the file present)
+is in the night chain; if it moves ms/window the serve should restart with the flag.
+
 ## Knobs measured and rejected (2026-11-26)
 
 - **Expert cache beyond the auto 3040 slots**: `--expert-cache 3179` is what actually fits on this
