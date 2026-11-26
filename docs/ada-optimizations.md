@@ -122,16 +122,27 @@ The last PLAN bar item measured on the 4080 SUPER, all bitwise:
 
 Nothing sits between these kernels and their limits: closed.
 
-## Basalt vs Strata on the same card and pack (queued, the last PLAN item)
+## Basalt vs Strata on the same card and pack (blocked on RAM, found 05:31)
 
-Strata 0.2.21.1 is installed with the same pack (`Qwen3.8-Flash-Next-UD-Q4_K_XL`, GGUF shards)
-pinned to GPU 0 in the run config behind the `launch-ud-q4_k_xl-200k` profile. Its `standard-v1`
-suite (`docs/BENCHMARK_PROTOCOL.md`) is queued to run twice on a quiet window tonight, then the
-rows will be reported here beside the community series with the drafter each engine uses named
-(the pack's own; Strata runs `--spec 4 --spec-min-p 0.5` there, Basalt the engine default 8) and
-the 320 W power limit stated. Caveat recorded in advance: the protocols differ (community-1 is
-cold per fixture, standard-v1 is its own document) - the comparison is per-engine steady states,
-not a like-for-like protocol race; the ABBA repetition guards drift, not protocol.
+Strata 0.2.21.1 is installed with the same pack (`Qwen3.8-Flash-Next-UD-Q4_K_XL`, GGUF shards).
+The saved run configs behind the profiles were stale (they point at control/0.1.63, deleted by
+the update; installed is 0.1.68), so an isolated copy was made (`/tmp/strata_cfg_q4_4080.json`:
+paths 0.1.63 -> 0.1.68, GPU 0 pinned via `CUDA_VISIBLE_DEVICES`, port 18080, log in /tmp) and a
+new profile `ada-night-compare` created from it - the user's own profiles and configs untouched.
+The engine came up (its PCIe probe 18.2 GB/s -> `pcie_frac 0.50`, the same adaptive rule Basalt
+computes; KV streaming 32768 of 204800 cells in VRAM) and two seconds into mapping its 72 GiB
+pinned complement **systemd-oomd killed the scope** (kernel: "Cannot map memory with base addr
+... size of 0x11eedcf pages"; oomd's top candidate was the scope at 89.8 GiB, memory pressure
+Avg10 89.6). That is the machine saying no: the serve already pins 73.5 GiB and a second ~72 GiB
+engine plus its client does not fit - one engine under that pinning is fine, two are not. The
+comparison needs the serve stopped (the user's call, it carries their traffic) or more RAM; it
+cannot be had passively overnight. Everything for it is staged: the `standard-v1` suite (short
+decode, 4k/16k prefill, concurrency ladder c1-c4 x r1-r3, warmup) is one quiet
+`strata bench run --profile ada-night-compare --suite standard-v1` away. Drafters differ by
+default (Strata runs `--spec 4 --spec-min-p 0.5`, Basalt the engine default 8) and the protocols
+differ (community-1 is cold per fixture, standard-v1 is served state): the comparison will be
+per-engine steady states, guarded by an ABBA repetition that guards drift, not protocol. The
+320 W power limit gets stated with the row.
 
 ## The expert cache hit rate and the learned profile (measured: cold-start value only)
 
