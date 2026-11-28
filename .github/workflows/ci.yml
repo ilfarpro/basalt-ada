@@ -206,7 +206,7 @@ jobs:
           path: build/Testing/Temporary/
           if-no-files-found: ignore
 
-  # Every sm_89 (Ada) code the tree has today is the peer tier: -DPEER_ADA=ON compiles those .cu files for sm_89
+  # The tree's sm_89 (Ada) code is the peer tier: -DPEER_ADA=ON compiles those .cu files for sm_89
   # beside the sm_120 engine, so a pull request cannot break the Ada peer path unnoted (the Ada main build below is
   # the other one: it compiles the engine's own kernels for sm_89; this one compiles the peer files for both).
   build-ada-peer:
@@ -256,7 +256,7 @@ jobs:
           export TEMP="$PWD/build/tmp" TMP="$PWD/build/tmp" TMPDIR="$PWD/build/tmp"
           ctest --test-dir build -L cpu -LE avx512 -j 4 --output-on-failure --timeout 300
 
-  # The Ada main build: the engine itself for sm_89 (cmake/target_arch.cmake; PLAN.md's Ada scope), qwen4exp - the
+  # The Ada main build: the engine itself for sm_89 (cmake/target_arch.cmake; docs/building.md's Ada section), qwen4exp - the
   # model an Ada main card serves.  No GPU runner: the compile and the CPU tests, like the peer job.
   build-ada-main:
     needs: changes

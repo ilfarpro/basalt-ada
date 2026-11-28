@@ -97,7 +97,7 @@ ctest --test-dir build -L cpu -j 8 --output-on-failure
 
 The executables land in `bin/` whatever the generator is (a Visual Studio generator would otherwise put them in `bin/Release`, away from `data/`).
 
-`-DBASALT_MODELS` takes `all`, or the ids of the models you want; left out it defaults to `all`, or to `qwen4exp` on a
+`-DBASALT_MODELS` takes `all`, or the ids of the models you want; left out it defaults to `all`, or to `qwen4exp` on an
 `89` build ([building](building.md#building-only-some-models)).
 
 If tests fail to create fixtures, point `TEMP` and `TMP` into the build tree. CUDA 13.2+ headers need `/Zc:preprocessor`; the CMakeLists

@@ -17,7 +17,7 @@
 
 #if BASALT_CUDA_CC >= 120
 // the sm_120a form throughout: the block-scaled `mma.sync.aligned.kind::mxf4nvf4` and the `cvt.rn.satfinite.e2m1x2`
-// rounding.  an sm_89 build compiles the portable section at the end of the file instead; see PLAN.md.
+// rounding.  an sm_89 build compiles the portable section at the end of the file instead; see docs/building.md.
 
 namespace basalt::prefill::fp4 {
 namespace {

@@ -1,7 +1,7 @@
 // include/basalt/kernels/l2_pf.cuh - pull a global byte range into L2 without touching registers.
 //
 // sm_90+ asks the copy engine once (cp.async.bulk.prefetch.L2.global); Ada has no bulk prefetch, so the same
-// range is walked one 128-byte line at a time with prefetch.global.L2 (PLAN.md: Ada as a main card).  Both are
+// range is walked one 128-byte line at a time with prefetch.global.L2.  Both are
 // fire-and-forget requests for L2 only: a caller that needs the bytes landed reads a word of the range after
 // issuing, exactly as the read-ahead loops that call this do.  A caller issues for itself (one thread) or the
 // threads of a block must walk disjoint ranges: nothing here deduplicates.  `bytes` must be a multiple of 16

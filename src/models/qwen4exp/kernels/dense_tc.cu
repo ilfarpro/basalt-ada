@@ -353,12 +353,12 @@ __device__ __forceinline__ void half_sb_terms(float (&acc)[4], const uint8_t* co
 #endif
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800 && __CUDA_ARCH__ < 900
-// The producer and consumer on Ada (sm_89, PLAN.md: Ada main card).  The mbarrier phases are the sm_90 ones;
+// The producer and consumer on Ada (sm_89).  The mbarrier phases are the sm_90 ones;
 // only the two instructions Ada lacks are replaced.  warp 0's bulk copy becomes a cp.async staging every thread
 // of the block takes part in, each arriving once per issue through cp.async.mbarrier.arrive.noinc - after all the
 // cp.async chunks that thread issued, so a phase completes exactly when every thread's chunks of that issue
 // landed.  .noinc matters: the plain form pre-increments the pending arrival count, so with every arrival being
-// such an arrive the phase never completes (measured on a 4080: the wait hangs); noinc makes it exactly one
+// such an arrive the phase never completes and the wait hangs; noinc makes it exactly one
 // arrival per thread per issue, which is what the init count counts.  A slot is re-issued only after the
 // __syncthreads() that follows its read, which is after its phase completed for the whole block, so arrivals of
 // one phase can never be counted for the next.  cp.async needs no async-proxy fence.  try_wait is sm_90, so the

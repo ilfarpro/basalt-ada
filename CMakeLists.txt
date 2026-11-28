@@ -636,7 +636,7 @@ if(PEER_BLACKWELL)
     PROPERTIES COMPILE_OPTIONS "--generate-code=arch=compute_120,code=sm_120")
 endif()
 
-# Ada as a main card (PLAN.md): dense_tc's and qsa_mid's sm_89 bodies are designed for Ada, so their parity tests run
+# Ada as a main card: dense_tc's and qsa_mid's sm_89 bodies are designed for Ada, so their parity tests run
 # on an Ada card; verify_kernels is plain CUDA apart from its lazy L2 prefetch, which reads line by line on Ada.
 # Per file, like the dec_moe files above: the rest of the qwen4exp kernel target is not sm_89-clean
 # yet, so the target as a whole cannot carry an 89 cubin.
@@ -735,7 +735,7 @@ if(PEER_BLACKWELL)
   set_source_files_properties(src/models/qwen4exp/kernels/native_moe.cu
     PROPERTIES COMPILE_OPTIONS "--use_fast_math;--generate-code=arch=compute_120,code=sm_120")
 endif()
-# Ada as a main card (PLAN.md): inkling2's and hy4flash's kernels are plain CUDA apart from their L2
+# Ada as a main card: inkling2's and hy4flash's kernels are plain CUDA apart from their L2
 # read-ahead, which walks prefetch.global.L2 line by line on Ada (basalt/kernels/l2_pf.cuh).  Per file:
 # the libraries' other files are not sm_89-clean yet, so an Ada card can run only these kernels.
 if(PEER_ADA)

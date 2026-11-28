@@ -372,9 +372,9 @@ __global__ void __launch_bounds__(128) f32_rows_dot_kernel(const float* __restri
 // A target without thread-block clusters cannot share partials across blocks, so its kernel (the #else copy below, and
 // the host dispatch follows the build's card) keeps the 64-token tile in ONE block: the same 128-thread geometry, the
 // same m16n8k16 steps, the whole K accumulated in the block's own registers instead of eight ranks'.  A prompt chunk is
-// 16,384 tokens (256 tiles) on a card with 80 SMs, so the tile's work is what fills the machine, not the split.  The
+// hundreds of these tiles, so the tiles alone fill the machine; the split is not what fills it.  The
 // two copies are the same body with the cluster's lines removed; keep them in step when the body changes (the
-// Blackwell one must keep generating the sm_120 SASS it has, so it is textually HEAD's).
+// Blackwell copy must keep generating the sm_120 SASS it already does).
 constexpr int GP_AHEAD = 1;   // K / GP_S must be a multiple of 32 GP_AHEAD
 constexpr int GP_HV = 48, GP_TT = 64, GP_LD = 2 * GP_HV + 8, GP_NF = 2 * GP_HV / 8;
 [[maybe_unused]] constexpr int GP_S = 8;   // the cluster's block count: an older target's build never names it

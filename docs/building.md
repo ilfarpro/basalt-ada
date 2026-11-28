@@ -21,7 +21,7 @@ One compute capability per build: `CMAKE_CUDA_ARCHITECTURES` defaults to 120 (12
 a decision, not a default: `cmake -S . -B build -DCMAKE_CUDA_ARCHITECTURES=89`. It compiles without the FP4 /
 block-scaled tensor-core paths (a native NVFP4 pack is refused at the start of the run, before any allocation;
 the 120a-only prefill bodies stay only as their named refusals) and narrows the models default to `qwen4exp`,
-the one model an Ada main card serves today. The measured Ada series and every optimization's before/after
+the one model an Ada main card serves. Every Ada optimization's before/after
 live in [Ada optimizations](ada-optimizations.md); the CI job `build-ada-main` builds 89 and runs its CPU tests.
 
 ## Building only some models
