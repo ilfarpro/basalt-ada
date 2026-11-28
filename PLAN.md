@@ -194,6 +194,27 @@ new kernel bodies and no kernel source changed.
       back for the tier kernels it loads lazily on its first rows (measured there: 91 MiB, peer
       ended at 17 MiB free).  The same strip was a knife-edge one-card serving had outlived.
 
+## Catch-up with upstream
+
+`main` merges upstream's `main`: two models more (`ernie55`, `gemma4`), the quality suite in place
+of the wikitext perplexity gate, `docs/architecture` and `docs/ci` from the docs restructure, and
+the stateless-comment rule in CONTRIBUTING. Nothing Ada-specific moved upstream, so the merge's
+conflicts were the fork's own three: the card-following `BASALT_MODELS` default against upstream
+making the option required, the shared `pf_l2` read-ahead where inkling2 still has it (the experts'
+finish moved to `kernels/experts.cu`, which has none), and the README's shape.
+
+- [ ] Re-run the GPU gates on a card: the `ctest` GPU suite, the cross-capability pair's bitwise
+      gates (`dec_moe_parity`, `peer_share_parity`, `window_gemm_two_gpu`) and a live serve start.
+      The merge was checked by compiles and the `cpu` tests only - no card on the build machine.
+- [ ] Re-measure the Ada series before the README's numbers and `docs/ada-optimizations.md`'s last
+      rows are quoted again: upstream moved the KV pool, the expert tier and the prompt path, and
+      the Ada numbers ride on all three.
+- [ ] CI builds `-DPEER_ADA=ON` and the 89 main build, never `-DPEER_BLACKWELL=ON`: a second
+      configure in `build-ada-main` under another build folder, or its own job.
+- [ ] Inherited workflows need repository secrets this fork does not have (`release-discord.yml`
+      on a published release, `community-review.yml` and `ui-screenshot.yml` on pull requests):
+      give each its secret or switch it off, so a fork release is not a red run.
+
 ## Later Ada work (out of the scope above)
 
 - [ ] NVFP4 experts on Ada: decode through the `narrow_bf16` path (done), prefill through an Ada
