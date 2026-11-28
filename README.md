@@ -8,6 +8,38 @@ only on an NVIDIA Blackwell (sm_120) GPU on Linux and Windows x64, and on the DG
 
 <p align="center"><img src="docs/img/frontend.gif" alt="The Basalt web UI while a reply streams" width="720"></p>
 
+## Performance
+
+**TL;DR: Basalt Ada offers significantly better prefill speed and exceptional decode performance.**
+
+Tested Qwen3.8 Flash Next UD-Q4_K_XL on Ubuntu 26.04.1 LTS PC with Intel Core i7 14700KF (AVX2), 96GB DDR5 @ 5600 MT/s, RTX 4080 Super PCIe 4.0 x16 and RTX 5060 Ti 16GB PCIe 4.0 x4 with 615.71.09 driver and CUDA 13.4.
+
+> *Goal was to see real world baseline performance numbers without spending few days learning and testing configuration options and their effect on performance. Basalt Ada - settings are from Quick Start section of this README. Strata settings - after thorough tunning option offered in TUI interactive setup process. Tuning took more than hour and returned that default settings were already fastest on this PC (nothing changed).*
+
+### Single GPU
+
+Decode numbers are on prose and prefill is agentic coding session with ~91k prompt that consists of lot's of reasoning traces and some code. Tested on Strata 0.2.23 build 0.1.70 and Basalt Ada 0.5.7 at November 28th, 2026.
+
+| Metric | Basalt Ada | Strata | Result |
+| ------- | ----------- | ----- | ------ |
+| Prefill | ~4000 t/s | ~950 t/s | Basalt Ada has ~4.2× higher throughput |
+| Decode | ~64.5 t/s | ~61.5 t/s | Basalt Ada is ~5.2% faster |
+
+How long it takes to prefill ~91k prompt?
+
+| Engine    | Speed  | Wait time            |
+| ---------- | --------- | ---------------- |
+| Basalt Ada | 4 000 t/s | **22,8 sec**     |
+| Strata     | 950 t/s   | **1 min 36 sec** |
+
+### Dual GPU
+
+| Metric | Basalt Ada | Strata | Result |
+| ------- | ----------- | ----- | ------ |
+| Prefill | ~4000 t/s | ~2400 t/s | Strata accelerated slowly and reached max ~2400 t/s by the end of the prefill, Basalt Ada delivered ~4000 t/s prefill instantly |
+| Decode | ~90.3 t/s | ~43.0 t/s | Basalt Ada is ~2.1× faster |
+
+
 ## Requirements
 
 - Linux x86-64 with AVX2, or Windows 10 1903+ x64, with an NVIDIA Blackwell (compute capability 12.0) or Ada Lovelace (8.9) GPU ([platforms](docs/platforms.md)).
@@ -61,7 +93,10 @@ Then install dependecies
 ```sh
 pip install -r requirements.txt
 ```
-
+Activate venv
+```sh
+source .venv/bin/activate
+```
 
 ### 5. Download a model
 You also can [repack existing GGUF file](docs/model-file.md).
@@ -76,9 +111,20 @@ Put the settings in `basalt_config.json`:
 ```json
 {
   "version": 2,
-  "models": [{ "model": "models/Qwen3.8-FN-UD-Q4_K_XL.basalt", "gpu": "0,1", "gpu-mode": "peer", "kv": "int8" }],
-  "engine": { "resident-experts": true },
-  "server": { "port": 8080 }
+  "models": [
+    {
+      "model": "models/Qwen3.8-FN-UD-Q4_K_XL.basalt",
+      "gpu": "0,1",
+      "gpu-mode": "peer",
+      "kv": "int8"
+    }
+  ],
+  "engine": {
+    "resident-experts": true
+  },
+  "server": {
+    "port": 8080
+  }
 }
 ```
 Every setting: [configuration](docs/configuration/index.md). More examples:
