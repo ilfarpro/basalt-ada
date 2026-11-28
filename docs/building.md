@@ -6,7 +6,7 @@ The build commands are in the [README](../README.md). Windows: [platforms](platf
 
 - `src/`, `include/`: the engine (`basalt`, `basalt-bench`, `basalt-probe`, `basalt-vision`).
 - `serve/`: the Python server with the OpenAI and Anthropic API and the stats page.
-- `tools/`: the converter (`tools/convert/convert.py`), the `.basalt` reader (`model_file.py`), the quality gate (`ppl_gate.py`), the
+- `tools/`: the converter (`tools/convert/convert.py`), the `.basalt` reader (`model_file.py`), the quality suite (`quality_suite/`), the wikitext KLD gate (`ppl_gate.py`), the
   greedy-identity check and the tokenizer.
 - `tests/`: parity and unit tests. `data/`: expert profiles (`data/profiles`) and benchmark fixtures (`data/bench`).
 
@@ -21,15 +21,13 @@ One compute capability per build: `CMAKE_CUDA_ARCHITECTURES` defaults to 120 (12
 a decision, not a default: `cmake -S . -B build -DCMAKE_CUDA_ARCHITECTURES=89`. It compiles without the FP4 /
 block-scaled tensor-core paths (a native NVFP4 pack is refused at the start of the run, before any allocation;
 the 120a-only prefill bodies stay only as their named refusals) and narrows the models default to `qwen4exp`,
-the one model an Ada main card serves today. The measured Ada series and every optimization's before/after
+the one model an Ada main card serves. Every Ada optimization's before/after
 live in [Ada optimizations](ada-optimizations.md); the CI job `build-ada-main` builds 89 and runs its CPU tests.
 
 ## Building only some models
 
-`-DBASALT_MODELS=<ids>` is a semicolon list of architecture ids, or `all`, which builds every model and follows the
-models a later version adds. Left out, it defaults to the card: `qwen4exp` on an Ada (89) build, `all` on every other.
-A model left out is not compiled at
-all: its C++ and CUDA sources, its kernels and its tests are skipped, which is most of the build time for DeepSeek.
+`-DBASALT_MODELS=<ids>` is a semicolon list of architecture ids, or `all`, which builds every model, including any added later. Left out, it defaults to the card: `qwen4exp` on an Ada (89) build, `all` on every other. A model left out is not
+compiled at all: its C++ and CUDA sources, its kernels and its tests are skipped, which is most of the build time for DeepSeek.
 
 | Model | Id |
 | --- | --- |
@@ -38,6 +36,8 @@ all: its C++ and CUDA sources, its kernels and its tests are skipped, which is m
 | Qwen3.8-27B | `qwen35` |
 | Hy4-flash | `hy4flash` |
 | Inkling 2 Mini | `inkling2` |
+| ERNIE-5.5-Flash | `ernie55` |
+| Gemma 4 | `gemma4` |
 
 ```sh
 cmake -S . -B build -DBASALT_MODELS=qwen4exp                  # Flash-Next only
@@ -45,10 +45,11 @@ cmake -S . -B build -DBASALT_MODELS=deepseek41                # DeepSeek only
 cmake -S . -B build -DBASALT_MODELS=qwen35                    # the 27B only
 cmake -S . -B build -DBASALT_MODELS=hy4flash                  # Hy4-flash only
 cmake -S . -B build -DBASALT_MODELS=inkling2                  # Inkling 2 Mini only
-cmake -S . -B build "-DBASALT_MODELS=qwen4exp;deepseek41"     # two of them; quote the semicolon
+cmake -S . -B build -DBASALT_MODELS=ernie55                   # ERNIE-5.5-Flash only
+cmake -S . -B build "-DBASALT_MODELS=qwen4exp;deepseek41"     # a list; quote the semicolon
 ```
 
-An unknown id, an empty value or no value stops the configure and names the valid ids. A pack of a model the build left out fails at load with
+An unknown id or an empty value stops the configure and names the valid ids. A pack of a model the build left out fails at load with
 `architecture is 'deepseek41', a Basalt model this build left out (built with BASALT_MODELS=qwen4exp); rebuild with cmake
 -DBASALT_MODELS="qwen4exp;deepseek41;qwen35" to load it`. The value is kept in the build folder's cache: to change it, pass the option again (`-DBASALT_MODELS=all` goes back to every
 model).

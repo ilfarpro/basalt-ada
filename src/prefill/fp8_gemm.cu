@@ -6,7 +6,7 @@
 // (rows), each 64 tokens x 64 rows, ldmatrix fragments ping-ponged over the four k32 steps, one CTA per SM, the token
 // tiles fastest in the grid.  The activations are the mma's A (m16) and the weight rows its B (n8), so a thread's
 // accumulator pair is two adjacent weight rows of one token.  The mma is the block-scaled form with both scales 2^0 (the
-// plain e4m3 form accumulates at half rate on the RTX 5090); fp32 accumulation over K in order, the two scales applied
+// plain e4m3 form accumulates at half rate); fp32 accumulation over K in order, the two scales applied
 // with rounded multiplies once at the end, so a row's bits do not depend on the chunk length or the tile it falls in.
 // One product may span up to three weight matrices that share the activations (each with its own scale, output and
 // stride): their row tiles run in one grid.
@@ -32,7 +32,7 @@
 
 #if BASALT_CUDA_CC >= 120
 // the whole file is the sm_120a form: the block-scaled `mma.sync.aligned.kind::mxf8f6f4` and the TMA / mbarrier
-// pipeline.  an sm_89 build compiles the portable section at the end of the file instead; see PLAN.md.
+// pipeline.  an sm_89 build compiles the portable section at the end of the file instead; see docs/building.md.
 
 namespace basalt::prefill::fp8 {
 namespace {
@@ -571,7 +571,7 @@ void gemm(const uint8_t* w, int64_t w_rows, int64_t w_cols, const float* w_scale
 // Ada's build: the byte counts are live (a scratch sizing does not need the card's instructions), every other entry
 // refuses.  The FP8 prefill path needs the block-scaled `mma.sync.kind::mxf8f6f4` of the sm_120a ISA, and this build
 // does not carry it; the runtime does not put an FP8 pack on an Ada card, so reaching one of these names is a bug,
-// and it says so.  The Ada prefill design is PLAN.md's later work.
+// and it says so.  The Ada prefill path is the later work docs/building.md's Ada section points to.
 namespace basalt::prefill::fp8 {
 namespace {
 [[noreturn]] void not_built() {

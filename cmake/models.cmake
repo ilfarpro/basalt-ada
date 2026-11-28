@@ -3,13 +3,13 @@
 # `if(BASALT_MODEL_<ARCH>)`. A model left out is not compiled, not linked and not registered.
 
 # Every model that ships: the architecture ids, as `general.architecture` names them.
-set(BASALT_BUILTIN_MODELS qwen4exp deepseek41 qwen35 hy4flash inkling2)
+set(BASALT_BUILTIN_MODELS qwen4exp deepseek41 qwen35 hy4flash inkling2 ernie55 gemma4)
 
-# The default follows the card: an Ada (89) build starts from qwen4exp alone, it is the one model an Ada main card
-# serves today (the others need the work of PLAN.md's "Later Ada work"); name one on the command line to build it and
-# take responsibility for it.  Everywhere else the default is "all", which follows BASALT_BUILTIN_MODELS, so a build
-# folder picks up a model added later.  The cache keeps the word, not the list: a list written as the default would stay
-# in the folder and leave every newer model out.  A folder that already holds a value keeps it.
+# The default follows the card: an Ada (89) build starts from qwen4exp alone, the one model an Ada main card serves;
+# name one on the command line to build it and take responsibility for it.  Everywhere else the default is "all", which
+# follows BASALT_BUILTIN_MODELS, so a build folder picks up a model added later.  The cache keeps the word, not the
+# list: a list written as the default would stay in the folder and leave every newer model out.  A folder that already
+# holds a value keeps it.
 if(BASALT_CUDA_CC STREQUAL "89")
   set(_basalt_models_default "qwen4exp")
 else()

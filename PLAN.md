@@ -194,6 +194,44 @@ new kernel bodies and no kernel source changed.
       back for the tier kernels it loads lazily on its first rows (measured there: 91 MiB, peer
       ended at 17 MiB free).  The same strip was a knife-edge one-card serving had outlived.
 
+## Catch-up with upstream
+
+`main` merges upstream's `main`: two models more (`ernie55`, `gemma4`), the quality suite in place
+of the wikitext perplexity gate, `docs/architecture` and `docs/ci` from the docs restructure, and
+the stateless-comment rule in CONTRIBUTING. Nothing Ada-specific moved upstream, so the merge's
+conflicts were the fork's own three: the card-following `BASALT_MODELS` default against upstream
+making the option required, the shared `pf_l2` read-ahead where inkling2 still has it (the experts'
+finish moved to `kernels/experts.cu`, which has none), and the README's shape.
+
+- [ ] Re-run the GPU gates on a card: the `ctest` GPU suite, the cross-capability pair's bitwise
+      gates (`dec_moe_parity`, `peer_share_parity`, `window_gemm_two_gpu`) and a live serve start.
+      The merge was checked by compiles and the `cpu` tests only - no card on the build machine.
+- [ ] Re-measure the Ada series before the README's numbers and `docs/ada-optimizations.md`'s last
+      rows are quoted again: upstream moved the KV pool, the expert tier and the prompt path, and
+      the Ada numbers ride on all three.
+- [ ] CI builds `-DPEER_ADA=ON` and the 89 main build, never `-DPEER_BLACKWELL=ON`: a second
+      configure in `build-ada-main` under another build folder, or its own job.
+- [ ] Inherited workflows need repository secrets this fork does not have (`release-discord.yml`
+      on a published release, `community-review.yml` and `ui-screenshot.yml` on pull requests):
+      give each its secret or switch it off, so a fork release is not a red run.
+
+## A hybrid CPU read as one class
+
+`platform_cpu_test` fails on the machine the sync was built on, for a reason the engine owns rather
+than the test: that kernel publishes `cpu_capacity` as a flat 1024 for every logical processor
+(`cpuinfo_max_freq` says 5.5 and 5.6 GHz on the first sixteen, 4.3 GHz on the last twelve), so the
+capacity rule finds no gap and the `cpu_core`/`cpu_atom` fallback never runs - it is gated on the
+capacity path finding nothing at all. `is_hybrid` comes out false, and the CPU pool's affinity and
+the resident-experts plan then treat P-cores and E-cores as one class.
+
+- [ ] Decide the rule: when the capacities show no gap and the kernel's hybrid lists name two sets,
+      believe the lists (a widening of the fallback's gate, not a new path), then measure what the
+      pool and `resident-experts` gain on a machine of this shape. The code's comment says an x86
+      kernel publishes no `cpu_capacity`; a kernel that publishes the same value for both classes
+      is a case neither side covers. The same failure is not the sync's: the detection and the test
+      are upstream's, and
+      the merge changed neither.
+
 ## Later Ada work (out of the scope above)
 
 - [ ] NVFP4 experts on Ada: decode through the `narrow_bf16` path (done), prefill through an Ada
@@ -202,4 +240,7 @@ new kernel bodies and no kernel source changed.
       measured before it replaces anything.
 - [ ] Ada main card for the other models: inkling2's `attn.cu` calls `this_cluster()` (its
       `attn_chain`-style redesign), hy4flash's tests need `dense_ops`/`mhc` cubins; their other
-      files compile clean for sm_89 already.
+      files compile clean for sm_89 already. Inkling2's ring-summing finish kernel lost its L2
+      read-ahead when upstream rewrote it into `kernels/experts.cu`, which has none; when this
+      model reaches an Ada card the read-ahead comes back through `bk::pf_l2`, measured like the
+      rest.

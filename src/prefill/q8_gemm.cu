@@ -17,8 +17,8 @@
 
 #if BASALT_CUDA_CC >= 120
 // sm_90 and up throughout: the TMA / mbarrier pipeline beside the int8 MMA.  an sm_89 build compiles the portable
-// section at the end of the file instead; see PLAN.md (this path belongs to another model's prompt path, out of the
-// Ada scope).
+// section at the end of the file instead; see docs/building.md (this path belongs to another model's prompt path, out of
+// the Ada scope).
 
 namespace basalt::prefill::q8 {
 namespace {

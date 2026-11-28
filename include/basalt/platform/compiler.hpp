@@ -121,10 +121,9 @@ inline void store_fence() {
 /// A fill of, or copy into, page-locked RAM a GPU agent both reads and writes back later (the dec_moe tag rows: a
 /// combine restores the tag word into a peer's row after reading it). A plain store leaves the line dirty in the
 /// CPU's caches, and its write-back lands whenever the caches feel like it - after the GPU's own store to the same
-/// line, overwriting it. A GeForce RTX 4080 SUPER lost a re-armed tag word this way in most of the rows that landed
-/// while its combine was waiting; with these stores, none. Non-temporal stores leave no line behind (and `sfence`
-/// makes them land in RAM before an arrival word the caller raises after); the Arm64 boards this runs on map their
-/// RAM coherent for both sides and need nothing. Sizes are the protocol's: whole 4-byte words of a page-locked row.
+/// line, overwriting it. Non-temporal stores leave no line behind, so nothing can land late (and `sfence` makes them
+/// land in RAM before an arrival word the caller raises after); Arm64 maps its RAM coherent for both sides and needs
+/// nothing. Sizes are the protocol's: whole 4-byte words of a page-locked row.
 inline void fill_u32_nt(void* dst, size_t words, uint32_t v) {
 #if defined(BASALT_ARCH_X86)
     char* d = (char*) dst;
