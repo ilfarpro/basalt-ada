@@ -50,9 +50,18 @@ cmake --build build -j
 
 
 ### 4. Install web-server dependencies
+
+You might need to create venv first, if your linux distribution doesn't allow to install packages with pip. 
+```sh
+python3 -m venv .venv
+
+source .venv/bin/activate
+```
+Then install dependecies
 ```sh
 pip install -r requirements.txt
 ```
+
 
 ### 5. Download a model
 You also can [repack existing GGUF file](docs/model-file.md).
