@@ -2,11 +2,11 @@
 # Included right after project() by the root project and by the standalone tools/vision configuration.
 #
 #   BASALT_ARM64    ON when the target is Arm64: the CPU kernels are NEON. OFF on x86-64 (AVX2 / AVX-512).
-#   BASALT_CUDA_CC  89 (an Ada main card), 120 (discrete Blackwell) or 121 (the integrated Blackwell of the N1X and
-#                   GB10 systems-on-chip).  It follows CMAKE_CUDA_ARCHITECTURES, which defaults to 121 on Arm64 and
+#   BASALT_CUDA_CC  89 (an Ada main card), 120 (discrete Blackwell) or 121 (the integrated Blackwell of a
+#                   system-on-chip).  It follows CMAKE_CUDA_ARCHITECTURES, which defaults to 121 on Arm64 and
 #                   120 elsewhere; 89 is a decision, not a default: -DCMAKE_CUDA_ARCHITECTURES=89, and with it a build
 #                   without the FP4 / block-scaled tensor-core paths (cmake's models default narrows to qwen4exp, the
-#                   one model an Ada main card serves today).  The two are independent: -DCMAKE_CUDA_ARCHITECTURES=120
+#                   one model an Ada main card serves).  The two are independent: -DCMAKE_CUDA_ARCHITECTURES=120
 #                   on Arm64 builds for a discrete card in an Arm machine.
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|arm64|aarch64)$" OR "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}" MATCHES "^ARM64")
   set(BASALT_ARM64 ON)
@@ -14,8 +14,8 @@ else()
   set(BASALT_ARM64 OFF)
 endif()
 
-# _basalt_cuda_arch_default is set before project() when the caller named no architecture; compiler detection has
-# since filled in the default of nvcc itself, which is replaced here.
+# _basalt_cuda_arch_default is set before project() when the caller named no architecture; compiler detection then
+# fills in the default of nvcc itself, which is replaced here.
 if(_basalt_cuda_arch_default)
   if(BASALT_ARM64)
     set(CMAKE_CUDA_ARCHITECTURES 121 CACHE STRING "CUDA architectures" FORCE)

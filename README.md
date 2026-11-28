@@ -2,9 +2,9 @@
 
 > **Basalt Ada is a fork of [Basalt](https://github.com/jesdga95/basalt) by [jesdga95](https://github.com/jesdga95). This fork extends hardware support backwards: from Blackwell to Ada Lovelace. Fork is new, only Qwen 3.8 Flash Next UD-Q4_K_XL is implemented and tested. Treat it like project in early Alpha stage. You'll probably encounter errors and problems. Please consider opening issues and PRs to contribute. They are much appreciated!**
 
-*Original Basalt is a local inference engine for large language models: **Qwen3.8-Flash-Next**, **DeepSeek-V4.1-Flash**, **Qwen3.8-27B**, **Hy4-flash** and **Inkling 2 Mini**. It runs
-only on an NVIDIA Blackwell (sm_120) GPU on Linux and Windows x64, and on the DGX Spark (GB10, Arm64), with what does not fit in VRAM
-(the experts of a mixture-of-experts model) in system RAM, and optionally on more GPUs. The server speaks the OpenAI and Anthropic APIs.*
+*Original Basalt is a local inference engine for large language models: **Qwen3.8-Flash-Next**, **DeepSeek-V4.1-Flash**, **Qwen3.8-27B**, **Hy4-flash**, **Inkling 2 Mini**, **ERNIE-5.5-Flash** and **Gemma 4**. It runs
+only on an NVIDIA Blackwell GPU (sm_120) on Linux and Windows x64, and on the DGX Spark (GB10, Arm64), with what does not fit in VRAM
+(the experts of a mixture-of-experts model) in system RAM, and optionally on more GPUs. The server speaks the OpenAI and Anthropic APIs. Website: [basalt.jgulfo.com](https://basalt.jgulfo.com).*
 
 <p align="center"><img src="docs/img/frontend.gif" alt="The Basalt web UI while a reply streams" width="720"></p>
 
@@ -38,7 +38,6 @@ How long it takes to prefill ~91k prompt?
 | ------- | ----------- | ----- | ------ |
 | Prefill | ~4000 t/s | ~2400 t/s | Strata accelerated slowly and reached max ~2400 t/s by the end of the prefill, Basalt Ada delivered ~4000 t/s prefill instantly |
 | Decode | ~90.3 t/s | ~43.0 t/s | Basalt Ada is ~2.1× faster |
-
 
 ## Requirements
 
@@ -78,7 +77,7 @@ cmake --build build -j
 - Executables will be in: bin/basalt, bin/basalt-bench, bin/basalt-probe, bin/basalt-vision
 - For Windows: add -G Ninja to the configure line, from an x64 VS 2022 prompt ([platforms](docs/platforms.md#building-on-windows))
 - One model only: 
-  `-DBASALT_MODELS=qwen4exp, deepseek41, qwen35, hy4flash or inkling2` ([building](docs/building.md#building-only-some-models))
+  `-DBASALT_MODELS=qwen4exp, deepseek41, qwen35, hy4flash, inkling2, ernie55 or gemma4` ([building](docs/building.md#building-only-some-models))
 
 
 ### 4. Install web-server dependencies
@@ -149,9 +148,10 @@ bin/basalt serve --config basalt_config.json --host 0.0.0.0 --port 8080 --api-ke
   [diagnostics](docs/configuration/diagnostics.md), [basalt-probe](docs/probe.md), [platforms](docs/platforms.md).
 - **Models:** [models](docs/models/index.md), [Flash-Next](docs/models/qwen38-flash-next.md), [DeepSeek](docs/models/deepseek41.md),
   [Qwen3.8-27B](docs/models/qwen38-27b.md), [Hy4-flash](docs/models/hy4-flash.md), [Inkling 2 Mini](docs/models/inkling2.md),
+  [ERNIE-5.5-Flash](docs/models/ernie55.md), [Gemma 4](docs/models/gemma4.md),
   [the `.basalt` file](docs/model-file.md), [file format changes](docs/basalt-file-changelog.md).
-- **Quality:** [precision](docs/precision/index.md), [method](docs/precision/quality.md).
-- **Build and develop:** [building](docs/building.md), [adding a model](docs/adding-a-model.md), [community runs](docs/community.md),
+- **Quality:** [precision](docs/precision/index.md), [method](docs/precision/quality-suite.md).
+- **Build and develop:** [building](docs/building.md), [adding a model](docs/architecture/adding-a-model.md), [community runs](docs/community.md),
   [changelog](docs/changelog/index.md), [contributing](CONTRIBUTING.md).
 
 ## Credits
@@ -159,7 +159,7 @@ bin/basalt serve --config basalt_config.json --host 0.0.0.0 --port 8080 --api-ke
 - **Code:** [Basalt](https://github.com/jesdga95/basalt) (MIT) the project Basalt Ada forks; [Strata](https://github.com/Niko1221/Strata), the project original Basalt forks (MIT); [Infernix](https://github.com/Wallawalla47/Infernix)
   (Ian Ranson and contributors, Apache-2.0), whose kernels are adapted; [ggml and llama.cpp](https://github.com/ggml-org/llama.cpp)
   (MIT); and ideas from [NInfer](https://github.com/Neroued/ninfer). Licences: [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
-- **Models:** [Qwen](https://huggingface.co/Qwen), [DeepSeek](https://huggingface.co/deepseek-ai), [Tencent](https://huggingface.co/tencent) (Hy4-flash) and Thinking Machines Lab (Inkling 2 Mini), under the licences on their cards;
+- **Models:** [Qwen](https://huggingface.co/Qwen), [DeepSeek](https://huggingface.co/deepseek-ai), [Tencent](https://huggingface.co/tencent) (Hy4-flash), Thinking Machines Lab (Inkling 2 Mini), [Baidu](https://huggingface.co/baidu) (ERNIE-5.5-Flash) and [Google](https://huggingface.co/google) (Gemma 4), under the licences on their cards;
   [Unsloth](https://huggingface.co/unsloth)'s GGUFs; [NVIDIA](https://huggingface.co/nvidia)'s NVFP4 checkpoints;
   [QUASAR-QAT](https://huggingface.co/QUASAR-QAT/Qwen3.8-27B-QUASAR-NVFP4)'s NVFP4 27B (Apache-2.0); [z-lab](https://huggingface.co/z-lab/Qwen3.8-27B-DFlash2)'s DFlash 2 drafter.
 

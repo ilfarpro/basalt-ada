@@ -3,7 +3,7 @@
 # `if(BASALT_MODEL_<ARCH>)`. A model left out is not compiled, not linked and not registered.
 
 # Every model that ships: the architecture ids, as `general.architecture` names them.
-set(BASALT_BUILTIN_MODELS qwen4exp deepseek41 qwen35 hy4flash inkling2)
+set(BASALT_BUILTIN_MODELS qwen4exp deepseek41 qwen35 hy4flash inkling2 ernie55 gemma4)
 
 # The default follows the card: an Ada (89) build starts from qwen4exp alone, it is the one model an Ada main card
 # serves today (the others need the work of PLAN.md's "Later Ada work"); name one on the command line to build it and
